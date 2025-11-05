@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+:root {
+  --header-h: 64px;
+  --sidebar-w: 240px;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #0f1218;
+  color: #fff;
+}
+
+/* IMPORTANT: do NOT set padding on body or main globally */
+/* If you still have these from earlier, delete them:
+body { padding-top: var(--header-h); padding-left: var(--sidebar-w); }
+main { padding-top: var(--header-h); padding-left: var(--sidebar-w); }
+*/
