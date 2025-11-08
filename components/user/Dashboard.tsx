@@ -3,7 +3,10 @@
 import { FAKE_USER_DASHBOARD, type UserDashboardData } from "@/lib/user-dashboard";
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
-
+import { AiOutlineMessage } from "react-icons/ai";
+import { FaRegCalendarPlus } from "react-icons/fa";
+import { FaMoneyBillWave } from "react-icons/fa6";
+import { SlCalender } from "react-icons/sl";
 function Badge({ children, tone = "default" }: { children: React.ReactNode; tone?: "default" | "green" | "yellow" }) {
   const cls =
     tone === "green"
@@ -15,11 +18,27 @@ function Badge({ children, tone = "default" }: { children: React.ReactNode; tone
 }
 
 function Card({ title, value, hint }: { title: string; value: string | number; hint?: string }) {
+  const Icon = (() => {
+    switch (title) {
+      case "Open Chats":
+        return AiOutlineMessage;
+      case "Appointments Today":
+        return SlCalender;
+      case "New Appointments":
+        return FaRegCalendarPlus;
+      case "Payments Today":
+        return FaMoneyBillWave;
+      default:
+        return null;
+    }
+  })();
+
   return (
     <div className="bg-[#171b24] border border-white/10 rounded-xl p-4">
+      {Icon && <Icon className="text-3xl mb-2 text-gray-400" />}
       <div className="text-sm text-gray-400">{title}</div>
-      <div className="text-2xl font-semibold mt-1">{value}</div>
       {hint && <div className="text-xs text-gray-500 mt-1">{hint}</div>}
+      <div className="text-2xl font-semibold mt-1">{value}</div>
     </div>
   );
 }
