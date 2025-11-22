@@ -63,13 +63,17 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { FaRegArrowAltCircleRight } from "react-icons/fa";
 
+import { useSession } from "next-auth/react"
+
 type Role = "admin" | "user" | null;
 
 function cx(...classes: (string | false | undefined)[]) {
   return classes.filter(Boolean).join(" ");
 }
 
-export default function SidebarClient({ role }: { role: Role }) {
+export default function SidebarClient() {
+   const { data: session } = useSession();
+  const role = (session?.user as any)?.role;
   const router = useRouter();
   const pathname = usePathname();
   const items = role === "admin" ? adminNav : userNav;

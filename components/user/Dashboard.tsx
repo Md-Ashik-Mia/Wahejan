@@ -34,7 +34,7 @@ function Card({ title, value, hint }: { title: string; value: string | number; h
   })();
 
   return (
-    <div className="bg-[#171b24] border border-white/10 rounded-xl p-4">
+    <div className="bg-[#272727]  border border-white/10 rounded-xl p-4">
       {Icon && <Icon className="text-3xl mb-2 text-gray-400" />}
       <div className="text-sm text-gray-400">{title}</div>
       {hint && <div className="text-xs text-gray-500 mt-1">{hint}</div>}
@@ -59,7 +59,7 @@ export default function Dashboard() {
   const d = data ?? FAKE_USER_DASHBOARD;
 
   return (
-    <div className="space-y-6 p-4">
+    <div className="space-y-6 p-4 bg-black">
       {/* Top stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card title="Open Chats" value={d.cards.openChats} hint="All caught up" />
@@ -69,8 +69,8 @@ export default function Dashboard() {
       </div>
 
       {/* Appointments Today */}
-      <section className="bg-[#121620] border border-white/10 rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-2 bg-blue-600/20 border-b border-blue-500/40">
+      <section className="bg-[#272727]  border border-white/10 rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2 bg-[#272727]">
           <div className="font-medium">Appointments Today</div>
           <div className="text-xs">
             <Badge>{d.appointmentsToday.length} appointments</Badge>
@@ -97,9 +97,9 @@ export default function Dashboard() {
       </section>
 
       {/* Payments Today */}
-      <section className="bg-[#121620] border border-white/10 rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-2 bg-blue-600/20 border-b border-blue-500/40">
-          <div className="font-medium">Payments Today</div>
+      <section className="bg-[#272727] border border-white/10 rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2 bg-[#272727] ">
+          <div className="font-medium ">Payments Today</div>
           <div className="text-xs">
             <Badge>{d.paymentsToday.filter(p => p.status === "paid").length} Paid</Badge>
           </div>
@@ -122,7 +122,7 @@ export default function Dashboard() {
       </section>
 
       {/* Channel Status */}
-      <section className="bg-[#121620] border border-white/10 rounded-xl p-4">
+      <section className="bg-[#272727]  border border-white/10 rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="font-medium">Channel Status</div>
           <Badge>{d.channels.filter(c => c.status === "online").length} Online</Badge>
@@ -142,8 +142,8 @@ export default function Dashboard() {
       </section>
 
       {/* Notifications */}
-      <section className="bg-[#121620] border border-white/10 rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-2 bg-blue-600/20 border-b border-blue-500/40">
+      <section className="bg-[#272727]  border border-white/10 rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2 bg-[#272727]">
           <div className="font-medium">Notifications/Alerts</div>
           <Badge>All systems normal</Badge>
         </div>
