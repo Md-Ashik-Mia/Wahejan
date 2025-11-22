@@ -21,7 +21,7 @@ export default function VerifyPage() {
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
     try {
-      const res = await api.post("https://ape-in-eft.ngrok-free.app/verify-otp/", {
+      const res = await api.post("/api/verify-otp/", {
         email,
         otp,
       });

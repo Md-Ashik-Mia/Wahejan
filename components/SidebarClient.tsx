@@ -62,7 +62,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { FaRegArrowAltCircleRight } from "react-icons/fa";
-
+import { signOut } from "next-auth/react";
 import { useSession } from "next-auth/react"
 
 type Role = "admin" | "user" | null;
@@ -79,7 +79,7 @@ export default function SidebarClient() {
   const items = role === "admin" ? adminNav : userNav;
 
   async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
+    await signOut({ callbackUrl: "/login" });
     router.push("/login");
   }
 

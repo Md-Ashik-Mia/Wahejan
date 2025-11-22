@@ -111,6 +111,14 @@ export const authOptions: NextAuthOptions = {
       (session as any).accessToken = token.accessToken;
       return session;
     },
+
+     async redirect({ baseUrl, token }) {
+      const role = (token as any)?.role;
+      if (role === "admin") return `${baseUrl}/admin/dashboard`;
+      if (role === "user") return `${baseUrl}/user/dashboard`;
+      return baseUrl;
+    }
+
   },
 
   pages: {

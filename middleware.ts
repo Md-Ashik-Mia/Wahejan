@@ -73,10 +73,17 @@ export default withAuth(
     ) {
       return NextResponse.redirect(new URL("/user/subscription", req.url));
     }
+
+return NextResponse.next();
+
   },
-  {
+{
     callbacks: {
-      authorized: ({ token }) => !!token, // must be logged in at all
+      // if there is NO token → redirect to signIn page (/login)
+      authorized: ({ token }) => !!token,
+    },
+    pages: {
+      signIn: "/login",
     },
   }
 );
