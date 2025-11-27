@@ -52,7 +52,7 @@ export default function SignupPage() {
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
     try {
-      const res = await api.post("api/auth/users/", { email, password });
+      const res = await api.post("/auth/users/", { email, password });
       if (res.status === 201 || res.status === 200) {
         // Save email for OTP step
         localStorage.setItem("signup_email", email);

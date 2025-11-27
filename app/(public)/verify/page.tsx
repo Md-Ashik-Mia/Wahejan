@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { api } from "@/lib/http/client";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export default function VerifyPage() {
   const [otp, setOtp] = useState("");
@@ -21,7 +21,7 @@ export default function VerifyPage() {
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
     try {
-      const res = await api.post("/api/verify-otp/", {
+      const res = await api.post("/verify-otp/", {
         email,
         otp,
       });

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import React from 'react';
 
 const AIKnowledgeBase: React.FC = () => {
@@ -61,7 +62,9 @@ const AIKnowledgeBase: React.FC = () => {
             </div>
           </div>
         </div>
+         <Link href="/user/ai-assistant#knowledge-base">
         <button className="bg-blue-600 px-4 py-2 rounded-lg mt-4 md:mt-0">+ Add Missing Info</button>
+        </Link>
       </section>
 
       {/* Knowledge Categories */}
