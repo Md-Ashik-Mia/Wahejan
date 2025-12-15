@@ -69,11 +69,38 @@ export default function ChatPage() {
         // 1) Connection established – grab profiles / initial room
         if (data.type === "connection_established") {
           if (Array.isArray(data.profiles)) {
-            const profs: Profile[] = data.profiles.map((p: any) => ({
-              platform: p.platform,
-              profile_id: String(p.profile_id),
-            }));
+            const profs: Profile[] = [];
+            const newConversations: Record<string, Conversation> = {};
+
+            data.profiles.forEach((p: any) => {
+              // Add profile
+              profs.push({
+                platform: p.platform,
+                profile_id: String(p.profile_id),
+              });
+
+              // Process rooms for this profile
+              if (Array.isArray(p.room)) {
+                p.room.forEach((r: any) => {
+                  const platform = p.platform;
+                  const clientId = String(r.client_id).trim();
+                  const roomId = r.room_id;
+                  const convId = `${platform}:${clientId}`;
+
+                  newConversations[convId] = {
+                    id: convId,
+                    platform,
+                    clientId,
+                    roomId,
+                    messages: [], // Will be filled when clicked via fetchHistory
+                    historyFetched: false,
+                  };
+                });
+              }
+            });
+
             setProfiles(profs);
+            setConversations((prev) => ({ ...prev, ...newConversations }));
 
             // Default selected platform
             if (!selectedPlatform && profs.length > 0) {
@@ -81,7 +108,6 @@ export default function ChatPage() {
             }
           }
 
-          // If your backend sends initial rooms/messages, you can parse them here too
           return;
         }
 
