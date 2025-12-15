@@ -1,9 +1,9 @@
 "use client";
-import React, { useState } from "react";
-import CustomPlanForm from "./components/CustomPlanForm";
+import { useState } from "react";
 import CustomPlanList from "./components//CustomPlanList";
 import CompanyFilter from "./components/CompanyFilter";
 import CompanyList from "./components/CompanyList";
+import CustomPlanForm from "./components/CustomPlanForm";
 
 export interface Company {
   id: number;
@@ -30,6 +30,8 @@ export interface CustomPlan {
   duration: string;
   seats: number;
   billingCycle: string;
+  renewalDate?: string;
+  coupon?: string;
 }
 
 const AdminCompaniesPage = () => {

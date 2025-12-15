@@ -118,9 +118,9 @@
 
 // lib/auth.ts
 import type { NextAuthOptions } from "next-auth";
+import AppleProvider from "next-auth/providers/apple";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
-import AppleProvider from "next-auth/providers/apple";
 import { api } from "./http/client";
 
 export const authOptions: NextAuthOptions = {
@@ -221,10 +221,7 @@ export const authOptions: NextAuthOptions = {
     },
 
     // Where to go after signIn (if you let NextAuth redirect)
-    async redirect({ baseUrl, token }) {
-      const role = (token as any)?.role;
-      if (role === "admin") return `${baseUrl}/admin/dashboard`;
-      if (role === "user") return `${baseUrl}/user/dashboard`;
+    async redirect({ baseUrl }) {
       return baseUrl;
     },
   },

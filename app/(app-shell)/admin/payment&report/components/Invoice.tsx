@@ -1,8 +1,8 @@
 "use client";
-import React, { useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { Download, Mail, Plus } from "lucide-react";
+import { useState } from "react";
 
 interface Company {
   id: number;
@@ -168,9 +168,9 @@ const Invoice = () => {
       ]),
     });
 
-    doc.text(`Subtotal: $${subtotal.toFixed(2)}`, 150, doc.lastAutoTable.finalY + 10);
-    doc.text(`VAT (20%): $${vat.toFixed(2)}`, 150, doc.lastAutoTable.finalY + 15);
-    doc.text(`Total: $${total.toFixed(2)}`, 150, doc.lastAutoTable.finalY + 20);
+    doc.text(`Subtotal: $${subtotal.toFixed(2)}`, 150, (doc as any).lastAutoTable.finalY + 10);
+    doc.text(`VAT (20%): $${vat.toFixed(2)}`, 150, (doc as any).lastAutoTable.finalY + 15);
+    doc.text(`Total: $${total.toFixed(2)}`, 150, (doc as any).lastAutoTable.finalY + 20);
 
     doc.save(`Invoice_${invoice.invoiceNo}.pdf`);
   };
@@ -285,7 +285,7 @@ const Invoice = () => {
               <button className="bg-orange-600 hover:bg-orange-500 px-4 py-2 rounded-lg flex items-center gap-2">
                 <Mail className="w-4 h-4" /> Email to Client
               </button>
-     
+
             </div>
           </div>
         )}

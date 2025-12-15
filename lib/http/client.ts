@@ -96,10 +96,7 @@ function attachAuth(
   if (typeof window !== "undefined") {
     const token = localStorage.getItem("access_token"); // set after login
     if (token) {
-      config.headers = {
-        ...config.headers,
-        Authorization: `Bearer ${token}`,
-      };
+      (config.headers as any).Authorization = `Bearer ${token}`;
     }
   }
   return config;
@@ -116,9 +113,6 @@ export const api = axios.create({
 /** Regular user API */
 export const userApi = axios.create({
   baseURL: BASE_URL,
-  headers: {
-    "X-Client": "wahejan-user", // optional; only matters if backend uses it
-  },
 });
 
 /** Admin API */

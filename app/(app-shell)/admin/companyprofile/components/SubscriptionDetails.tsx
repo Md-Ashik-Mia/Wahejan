@@ -1,6 +1,6 @@
 "use client";
-import React, { useState } from "react";
-import { Download, Save, Subscript } from "lucide-react";
+import { Download, Save } from "lucide-react";
+import { useState } from "react";
 
 interface Company {
   id: number;
@@ -77,7 +77,7 @@ const SubscriptionDetails = () => {
   );
 
   // Editable form data
-  const [formData, setFormData] = useState(selectedCompany || {});
+  const [formData, setFormData] = useState<Partial<Company>>(selectedCompany || {});
 
   const handleSelectChange = (id: number) => {
     const company = companies.find((c) => c.id === id);
@@ -92,7 +92,7 @@ const SubscriptionDetails = () => {
   const handleSave = () => {
     if (!selectedCompany) return;
     setCompanies((prev) =>
-      prev.map((c) => (c.id === selectedCompany.id ? { ...formData } : c))
+      prev.map((c) => (c.id === selectedCompany.id ? { ...formData } as Company : c))
     );
     alert("Changes saved successfully!");
   };

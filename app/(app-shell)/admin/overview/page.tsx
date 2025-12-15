@@ -1,12 +1,12 @@
 "use client";
-import React, { useState, useEffect } from "react";
 import { Search } from "lucide-react";
-import { FaWhatsapp, FaInstagram, FaFacebook } from "react-icons/fa";
+import React, { useEffect, useState } from "react";
 import { BsCheckCircleFill, BsExclamationCircleFill, BsXCircleFill } from "react-icons/bs";
+import { FaFacebook, FaInstagram, FaWhatsapp } from "react-icons/fa";
 
 interface Channel {
   name: string;
-  icon: JSX.Element;
+  icon: React.ReactNode;
   status: "Online" | "Offline" | "Warning";
   lastUsage: string;
   messagesToday: number;
