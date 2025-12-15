@@ -1,7 +1,7 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { useEffect, useRef, useState, FormEvent } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 type Platform = "facebook" | "whatsapp" | "instagram" | "telegram" | "sms" | string;
 
@@ -26,6 +26,7 @@ interface Conversation {
   clientId: string;
   roomId: number | string;
   messages: ChatMessage[];
+  historyFetched?: boolean;
 }
 
 export default function ChatPage() {
@@ -152,6 +153,84 @@ export default function ChatPage() {
   }, [accessToken, selectedPlatform]);
 
   /* ─────────────────────────────
+     1.5) Fetch History
+  ───────────────────────────── */
+  useEffect(() => {
+    const fetchHistory = async () => {
+      if (!selectedConversation || selectedConversation.historyFetched || !accessToken) return;
+
+      try {
+        // Mark as fetched immediately to prevent duplicate calls
+        setConversations((prev) => {
+          const conv = prev[selectedConversation.id];
+          if (!conv) return prev;
+          return {
+            ...prev,
+            [selectedConversation.id]: {
+              ...conv,
+              historyFetched: true,
+            },
+          };
+        });
+
+        const res = await fetch(
+          `https://ape-in-eft.ngrok-free.app/api/chat/old-message/${selectedConversation.platform}/${selectedConversation.roomId}/`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        );
+
+        if (!res.ok) throw new Error("Failed to fetch history");
+
+        const data = await res.json();
+
+        if (Array.isArray(data)) {
+          const historyMessages: ChatMessage[] = data.map((msg: any) => ({
+            id: String(msg.id),
+            platform: selectedConversation.platform,
+            clientId: selectedConversation.clientId,
+            roomId: msg.room,
+            text: msg.text,
+            direction: msg.type === "outgoing" ? "outgoing" : "incoming",
+            timestamp: msg.timestamp,
+          }));
+
+          // Merge history with existing messages
+          // We put history BEFORE existing messages, but need to deduplicate based on timestamp or ID if possible.
+          // Since existing messages use generated IDs, let's just prepend and sort by timestamp.
+
+          setConversations((prev) => {
+             const conv = prev[selectedConversation.id];
+             if (!conv) return prev;
+
+             // Simple merge: history + existing (filtering out any that might be in history? unlikely for WS messages unless they persisted)
+             // We'll rely on sorting for display.
+             const combined = [...historyMessages, ...conv.messages];
+
+             // Optional: Deduplicate by exact timestamp + text + direction if needed, but for now just raw merge
+             // (Assuming WS messages are "new" and generated after history fetch or just now)
+
+             return {
+               ...prev,
+               [selectedConversation.id]: {
+                 ...conv,
+                 messages: combined,
+               },
+             };
+          });
+        }
+      } catch (err) {
+        console.error("Error fetching history:", err);
+        // If failed, maybe allow retry? For now, we leave historyFetched=true to stop infinite loops.
+      }
+    };
+
+    fetchHistory();
+  }, [selectedConversationId, accessToken, selectedConversation?.historyFetched]); // Depend on ID to trigger switch
+
+  /* ─────────────────────────────
      2) Sending a message
      (you might need to adapt the payload
       to match your backend spec)
@@ -208,6 +287,13 @@ export default function ChatPage() {
   const filteredConversations = selectedPlatform
     ? conversationList.filter((c) => c.platform === selectedPlatform)
     : conversationList;
+
+  // Re-sort messages for the selected conversation (history + live)
+  const displayMessages = selectedConversation
+    ? [...selectedConversation.messages].sort(
+        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      )
+    : [];
 
   /* ─────────────────────────────
      4) Rendering
@@ -267,7 +353,11 @@ export default function ChatPage() {
 
           {filteredConversations.map((c) => {
             const isActive = c.id === selectedConversationId;
-            const lastMsg = c.messages[c.messages.length - 1];
+            // Sorting to find LAST message for preview
+            const sorted = [...c.messages].sort(
+              (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+            );
+            const lastMsg = sorted[sorted.length - 1];
 
             return (
               <button
@@ -340,7 +430,7 @@ export default function ChatPage() {
         {/* Messages area */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2">
           {selectedConversation ? (
-            selectedConversation.messages.map((m) => {
+            displayMessages.map((m) => {
               const isOutgoing = m.direction === "outgoing";
               return (
                 <div
