@@ -143,22 +143,354 @@
 
 "use client";
 
-import React, { useRef, useState, FormEvent } from "react";
+import { userapi } from "@/lib/http/client";
+import axios from "axios";
+import React, { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 type OpeningSlot = {
-  id: number;
+  id: string | number;
   day: string;
   start: string;
   end: string;
 };
 
+const OPENING_HOURS_ENDPOINT = "/opening-hours/";
+const COMPANY_ENDPOINT = "/auth/company/";
+const SERVICE_ENDPOINT = "/auth/company/service/";
+const AI_TRAINING_FILES_ENDPOINT = "/ai-training-files/";
+const KNOWLEDGE_BASE_ENDPOINT = "/knowledge-base/";
+
+type TrainingFile = {
+  id: number;
+  file: string;
+  uploaded_at: string | null;
+  company: number | null;
+};
+
+function normalizeTrainingFile(raw: unknown): TrainingFile {
+  const r: UnknownRecord = isRecord(raw) ? raw : {};
+  return {
+    id: typeof r.id === "number" ? r.id : 0,
+    file: typeof r.file === "string" ? r.file : "",
+    uploaded_at: typeof r.uploaded_at === "string" ? r.uploaded_at : null,
+    company: typeof r.company === "number" ? r.company : null,
+  };
+}
+
+function filenameFromPath(path: string): string {
+  const clean = path.trim();
+  if (!clean) return "";
+  const parts = clean.split("/");
+  return parts[parts.length - 1] ?? clean;
+}
+
+function trainingFileDetailEndpoint(id: number) {
+  return `${withTrailingSlash(AI_TRAINING_FILES_ENDPOINT)}${id}/`;
+}
+
+const DAY_OPTIONS = [
+  { code: "mon", label: "Monday" },
+  { code: "tue", label: "Tuesday" },
+  { code: "wed", label: "Wednesday" },
+  { code: "thu", label: "Thursday" },
+  { code: "fri", label: "Friday" },
+  { code: "sat", label: "Saturday" },
+  { code: "sun", label: "Sunday" },
+] as const;
+
+type DayCode = (typeof DAY_OPTIONS)[number]["code"];
+
+const DAY_LABEL: Record<DayCode, string> = {
+  mon: "Monday",
+  tue: "Tuesday",
+  wed: "Wednesday",
+  thu: "Thursday",
+  fri: "Friday",
+  sat: "Saturday",
+  sun: "Sunday",
+};
+
+function normalizeTimeHHmm(value: unknown): string {
+  if (typeof value !== "string") return "";
+  // Accept "09:00" or "09:00:00"; trim to HH:mm
+  const trimmed = value.trim();
+  if (/^\d{2}:\d{2}(:\d{2})?$/.test(trimmed)) return trimmed.slice(0, 5);
+  return trimmed;
+}
+
+function parseFlexibleTimeToHHmm(value: string): string {
+  const v = value.trim().toLowerCase();
+  if (!v) return "";
+
+  // HH:mm (or H:mm) or HH.mm (or H.mm) with optional am/pm
+  const withMinutes = v.match(/^(\d{1,2})\s*[:.](\d{2})\s*(am|pm)?$/);
+  if (withMinutes) {
+    const hour = Number(withMinutes[1]);
+    const minute = Number(withMinutes[2]);
+    const suffix = withMinutes[3] as "am" | "pm" | undefined;
+
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return "";
+    if (minute < 0 || minute > 59) return "";
+
+    let h = hour;
+    if (suffix) {
+      if (h < 1 || h > 12) return "";
+      if (suffix === "am") h = h === 12 ? 0 : h;
+      if (suffix === "pm") h = h === 12 ? 12 : h + 12;
+    } else {
+      if (h < 0 || h > 23) return "";
+    }
+
+    return `${String(h).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  }
+
+  // H am/pm (no minutes)
+  const hoursOnly = v.match(/^(\d{1,2})\s*(am|pm)$/);
+  if (hoursOnly) {
+    let h = Number(hoursOnly[1]);
+    const suffix = hoursOnly[2] as "am" | "pm";
+    if (!Number.isFinite(h) || h < 1 || h > 12) return "";
+    if (suffix === "am") h = h === 12 ? 0 : h;
+    if (suffix === "pm") h = h === 12 ? 12 : h + 12;
+    return `${String(h).padStart(2, "0")}:00`;
+  }
+
+  // Fallback: try to normalize strict HH:mm / HH:mm:ss strings
+  const strict = normalizeTimeHHmm(v);
+  if (/^\d{2}:\d{2}$/.test(strict)) return strict;
+  return "";
+}
+
+function normalizeTimeHHmmss(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const hhmm = parseFlexibleTimeToHHmm(value);
+  if (!hhmm) return null;
+  // backend examples use HH:mm:ss
+  return `${hhmm}:00`;
+}
+
+function toDayCode(value: unknown): DayCode | "" {
+  if (typeof value !== "string") return "";
+  const v = value.trim().toLowerCase();
+  if ((DAY_LABEL as Record<string, string>)[v]) return v as DayCode;
+  // Handle full names like "Monday" or abbreviations like "Mon"
+  const map: Record<string, DayCode> = {
+    monday: "mon",
+    mon: "mon",
+    tuesday: "tue",
+    tue: "tue",
+    wednesday: "wed",
+    wed: "wed",
+    thursday: "thu",
+    thu: "thu",
+    friday: "fri",
+    fri: "fri",
+    saturday: "sat",
+    sat: "sat",
+    sunday: "sun",
+    sun: "sun",
+  };
+  return map[v] ?? "";
+}
+
+type UnknownRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null;
+}
+
+function normalizeOpeningSlot(raw: unknown): OpeningSlot {
+  const r: UnknownRecord = isRecord(raw) ? raw : {};
+  const idRaw = r.id ?? r._id ?? r.uuid ?? r.pk;
+
+  const daysRaw = r.days;
+  const dayFromDays = Array.isArray(daysRaw) ? daysRaw[0] : undefined;
+  const dayRaw = dayFromDays ?? r.day ?? r.weekday ?? r.day_name;
+
+  const startRaw = r.start ?? r.start_time ?? r.from ?? r.open;
+  const endRaw = r.end ?? r.end_time ?? r.to ?? r.close;
+
+  const dayCode = toDayCode(dayRaw);
+
+  return {
+    id: typeof idRaw === "string" || typeof idRaw === "number" ? idRaw : "",
+    day: dayCode,
+    start: normalizeTimeHHmm(startRaw),
+    end: normalizeTimeHHmm(endRaw),
+  };
+}
+
+function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data;
+    if (isRecord(data)) {
+      const detail = data.detail;
+      const message = data.message;
+      if (typeof detail === "string" && detail.trim()) return detail;
+      if (typeof message === "string" && message.trim()) return message;
+
+      // Common validation errors are shaped like { field: ["msg"] } or { field: "msg" }
+      try {
+        const text = JSON.stringify(data);
+        if (text && text !== "{}") return text;
+      } catch {
+        // ignore
+      }
+    }
+    if (typeof error.message === "string" && error.message.trim()) return error.message;
+  }
+
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return fallback;
+}
+
+type CompanyData = {
+  id: number | null;
+  name: string | null;
+  industry: string | null;
+  description: string | null;
+  open: string | null;
+  close: string | null;
+  is_24_hours_open: boolean | null;
+  address: string | null;
+  city: string | null;
+  country: string | null;
+  system_language: string | null;
+  tone: string | null;
+  training_files: unknown;
+  website: string | null;
+  summary: string | null;
+  user: number | null;
+};
+
+function normalizeCompany(raw: unknown): CompanyData {
+  const r: UnknownRecord = isRecord(raw) ? raw : {};
+  const toNullableString = (v: unknown) => (typeof v === "string" ? v : null);
+  const toNullableNumber = (v: unknown) => (typeof v === "number" ? v : null);
+  const toNullableBool = (v: unknown) => (typeof v === "boolean" ? v : null);
+
+  return {
+    id: toNullableNumber(r.id),
+    name: toNullableString(r.name),
+    industry: toNullableString(r.industry),
+    description: toNullableString(r.description),
+    open: toNullableString(r.open),
+    close: toNullableString(r.close),
+    is_24_hours_open: toNullableBool(r.is_24_hours_open),
+    address: toNullableString(r.address),
+    city: toNullableString(r.city),
+    country: toNullableString(r.country),
+    system_language: toNullableString(r.system_language),
+    tone: toNullableString(r.tone),
+    training_files: r.training_files,
+    website: toNullableString(r.website),
+    summary: toNullableString(r.summary),
+    user: toNullableNumber(r.user),
+  };
+}
+
+function parsePriceToNumber(value: string): number | null {
+  const cleaned = value.replace(/[^0-9.]/g, "").trim();
+  if (!cleaned) return null;
+  const parsed = Number.parseFloat(cleaned);
+  if (!Number.isFinite(parsed)) return null;
+  return parsed;
+}
+
+function emptyToNull(value: string): string | null {
+  const v = value.trim();
+  return v ? v : null;
+}
+
+function withTrailingSlash(path: string) {
+  return path.endsWith("/") ? path : `${path}/`;
+}
+
+async function requestWithSlashFallback<T>(
+  fn: (endpoint: string) => Promise<T>,
+  endpoint: string
+): Promise<T> {
+  try {
+    return await fn(endpoint);
+  } catch (e: unknown) {
+    if (axios.isAxiosError(e) && e.response?.status === 404) {
+      const alt = endpoint.endsWith("/") ? endpoint.slice(0, -1) : withTrailingSlash(endpoint);
+      return await fn(alt);
+    }
+    throw e;
+  }
+}
+
+function buildOpeningHourCreatePayload(form: { day: string; start: string; end: string }) {
+  // Matches Postman CREATE: { days: ['fri'], start: '09:00', end: '18:00' }
+  const dayCode = toDayCode(form.day);
+  return {
+    days: dayCode ? [dayCode] : [],
+    start: normalizeTimeHHmm(form.start),
+    end: normalizeTimeHHmm(form.end),
+  };
+}
+
+function buildOpeningHourUpdatePayload(form: { day: string; start: string; end: string }) {
+  // Matches Postman UPDATE: { day: 'fri', start: '10:00', end: '18:00' }
+  const dayCode = toDayCode(form.day);
+  return {
+    day: dayCode || form.day,
+    start: normalizeTimeHHmm(form.start),
+    end: normalizeTimeHHmm(form.end),
+  };
+}
+
+function openingHourDetailEndpoint(id: string | number) {
+  return `${withTrailingSlash(OPENING_HOURS_ENDPOINT)}${id}/`;
+}
+
+async function patchOrPut(endpoint: string, body: unknown) {
+  try {
+    return await userapi.patch(endpoint, body);
+  } catch (e: unknown) {
+    // Some backends don't allow PATCH but allow PUT
+    if (axios.isAxiosError(e) && e.response?.status === 405) {
+      return await userapi.put(endpoint, body);
+    }
+    throw e;
+  }
+}
+
 type Service = {
   id: number;
   name: string;
+  description: string;
   price: string;
-  start: string;
-  end: string;
+  start_time: string;
+  end_time: string;
+  duration?: number | null;
 };
+
+function normalizeService(raw: unknown): Service {
+  const r: UnknownRecord = isRecord(raw) ? raw : {};
+  const id = typeof r.id === "number" ? r.id : 0;
+  const name = typeof r.name === "string" ? r.name : "";
+  const description = typeof r.description === "string" ? r.description : "";
+  const price = typeof r.price === "string" ? r.price : r.price != null ? String(r.price) : "";
+  const start_time = normalizeTimeHHmm(r.start_time);
+  const end_time = normalizeTimeHHmm(r.end_time);
+  const duration =
+    typeof r.duration === "number"
+      ? r.duration
+      : typeof r.duration_minutes === "number"
+      ? r.duration_minutes
+      : null;
+  return {
+    id,
+    name,
+    description,
+    price,
+    start_time,
+    end_time,
+    duration,
+  };
+}
 
 type KnowledgeTopic = {
   id: number;
@@ -167,61 +499,202 @@ type KnowledgeTopic = {
   createdAt: string;
 };
 
+function normalizeKnowledgeTopic(raw: unknown): KnowledgeTopic {
+  const r: UnknownRecord = isRecord(raw) ? raw : {};
+  const id = typeof r.id === "number" ? r.id : 0;
+  const title = typeof r.name === "string" ? r.name : "";
+  const description = typeof r.details === "string" ? r.details : "";
+  const createdAt = typeof r.created_at === "string" ? r.created_at : "";
+  return { id, title, description, createdAt };
+}
+
+function knowledgeBaseDetailEndpoint(id: number) {
+  return `${withTrailingSlash(KNOWLEDGE_BASE_ENDPOINT)}${id}/`;
+}
+
 const AIAssistantDashboard: React.FC = () => {
+  /* ─────────────────────────────────────
+     Company state
+  ───────────────────────────────────── */
+  const [company, setCompany] = useState<CompanyData | null>(null);
+  const [companyLoading, setCompanyLoading] = useState(false);
+  const [companyError, setCompanyError] = useState<string | null>(null);
+  const [companyForm, setCompanyForm] = useState({
+    name: "",
+    industry: "",
+    description: "",
+    address: "",
+    city: "",
+    country: "",
+    website: "",
+  });
+
+  const toneInitializedRef = useRef(false);
+
+  const fetchCompany = useCallback(async () => {
+    setCompanyLoading(true);
+    setCompanyError(null);
+    try {
+      const res = await requestWithSlashFallback((ep) => userapi.get(ep), COMPANY_ENDPOINT);
+      const normalized = normalizeCompany(res?.data);
+      setCompany(normalized);
+
+      if (!toneInitializedRef.current) {
+        setTonePreset(normalized.tone ?? "standard");
+        toneInitializedRef.current = true;
+      }
+
+      setCompanyForm({
+        name: normalized.name ?? "",
+        industry: normalized.industry ?? "",
+        description: normalized.description ?? "",
+        address: normalized.address ?? "",
+        city: normalized.city ?? "",
+        country: normalized.country ?? "",
+        website: normalized.website ?? "",
+      });
+    } catch (e: unknown) {
+      setCompanyError(getApiErrorMessage(e, "Failed to load company details"));
+    } finally {
+      setCompanyLoading(false);
+    }
+  }, []);
+
+  const handleCompanyUpdate = async () => {
+    setCompanyLoading(true);
+    setCompanyError(null);
+    try {
+      const current = company;
+      // Preserve non-UI fields from backend so we don't accidentally null them out.
+      const payload = {
+        name: emptyToNull(companyForm.name),
+        industry: emptyToNull(companyForm.industry),
+        description: emptyToNull(companyForm.description),
+        open: current?.open ?? null,
+        close: current?.close ?? null,
+        is_24_hours_open: current?.is_24_hours_open ?? false,
+        address: emptyToNull(companyForm.address),
+        city: emptyToNull(companyForm.city),
+        country: emptyToNull(companyForm.country),
+        system_language: current?.system_language ?? "English",
+        tone: current?.tone ?? null,
+        training_files: current?.training_files ?? null,
+        website: emptyToNull(companyForm.website),
+        summary: current?.summary ?? null,
+      };
+
+      const res = await requestWithSlashFallback(
+        (ep) => userapi.patch(ep, payload),
+        COMPANY_ENDPOINT
+      );
+
+      const normalized = normalizeCompany(res?.data);
+      setCompany(normalized);
+      setCompanyForm({
+        name: normalized.name ?? "",
+        industry: normalized.industry ?? "",
+        description: normalized.description ?? "",
+        address: normalized.address ?? "",
+        city: normalized.city ?? "",
+        country: normalized.country ?? "",
+        website: normalized.website ?? "",
+      });
+    } catch (e: unknown) {
+      setCompanyError(getApiErrorMessage(e, "Failed to update company details"));
+    } finally {
+      setCompanyLoading(false);
+    }
+  };
+
   /* ─────────────────────────────────────
      Opening hours state
   ───────────────────────────────────── */
-  const [openingSlots, setOpeningSlots] = useState<OpeningSlot[]>([
-    { id: 1, day: "Monday", start: "09:00", end: "17:00" },
-  ]);
+  const [openingSlots, setOpeningSlots] = useState<OpeningSlot[]>([]);
+  const [openingLoading, setOpeningLoading] = useState(false);
+  const [openingError, setOpeningError] = useState<string | null>(null);
   const [openingForm, setOpeningForm] = useState<{
-    id: number | null;
+    id: string | number | null;
     day: string;
     start: string;
     end: string;
   }>({
     id: null,
-    day: "Monday",
+    day: "mon",
     start: "09:00",
     end: "17:00",
   });
 
-  const handleOpeningSubmit = (e: FormEvent) => {
+  const fetchOpeningHours = useCallback(async () => {
+    setOpeningLoading(true);
+    setOpeningError(null);
+    try {
+      const res = await requestWithSlashFallback(
+        (ep) => userapi.get(ep),
+        OPENING_HOURS_ENDPOINT
+      );
+      const payload = res?.data;
+
+      const list = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.results)
+        ? payload.results
+        : Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload?.list)
+        ? payload.list
+        : [];
+
+      const normalized = list
+        .map(normalizeOpeningSlot)
+        .filter((s: OpeningSlot) => s.id !== "" && Boolean(s.day));
+
+      setOpeningSlots(normalized);
+    } catch (e: unknown) {
+      setOpeningError(getApiErrorMessage(e, "Failed to load opening hours"));
+    } finally {
+      setOpeningLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCompany();
+    fetchOpeningHours();
+  }, [fetchCompany, fetchOpeningHours]);
+
+  const handleOpeningSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!openingForm.day || !openingForm.start || !openingForm.end) return;
 
-    if (openingForm.id === null) {
-      // add new
-      const newSlot: OpeningSlot = {
-        id: Date.now(),
-        day: openingForm.day,
-        start: openingForm.start,
-        end: openingForm.end,
-      };
-      setOpeningSlots((prev) => [...prev, newSlot]);
-    } else {
-      // update existing
-      setOpeningSlots((prev) =>
-        prev.map((slot) =>
-          slot.id === openingForm.id
-            ? {
-                ...slot,
-                day: openingForm.day,
-                start: openingForm.start,
-                end: openingForm.end,
-              }
-            : slot
-        )
-      );
-    }
+    setOpeningLoading(true);
+    setOpeningError(null);
+    try {
+      if (openingForm.id === null) {
+        // create
+        await requestWithSlashFallback(
+          (ep) => userapi.post(ep, buildOpeningHourCreatePayload(openingForm)),
+          OPENING_HOURS_ENDPOINT
+        );
+      } else {
+        // update: backend uses detail route `/opening-hours/{id}/`
+        const detail = openingHourDetailEndpoint(openingForm.id);
+        await requestWithSlashFallback(
+          (ep) => patchOrPut(ep, buildOpeningHourUpdatePayload(openingForm)),
+          detail
+        );
+      }
 
-    // reset form
-    setOpeningForm({
-      id: null,
-      day: "Monday",
-      start: "09:00",
-      end: "17:00",
-    });
+      setOpeningForm({
+        id: null,
+        day: "mon",
+        start: "09:00",
+        end: "17:00",
+      });
+      await fetchOpeningHours();
+    } catch (e: unknown) {
+      setOpeningError(getApiErrorMessage(e, "Failed to save opening hour"));
+    } finally {
+      setOpeningLoading(false);
+    }
   };
 
   const handleOpeningEdit = (slot: OpeningSlot) => {
@@ -233,152 +706,383 @@ const AIAssistantDashboard: React.FC = () => {
     });
   };
 
-  const handleOpeningDelete = (id: number) => {
-    setOpeningSlots((prev) => prev.filter((s) => s.id !== id));
-    // if we were editing this one, reset the form
-    if (openingForm.id === id) {
-      setOpeningForm({
-        id: null,
-        day: "Monday",
-        start: "09:00",
-        end: "17:00",
-      });
+  const handleOpeningDelete = async (id: string | number) => {
+    setOpeningLoading(true);
+    setOpeningError(null);
+    try {
+      // delete: backend uses detail route `/opening-hours/{id}/`
+      const detail = openingHourDetailEndpoint(id);
+      await requestWithSlashFallback((ep) => userapi.delete(ep), detail);
+
+      if (openingForm.id === id) {
+        setOpeningForm({
+          id: null,
+          day: "mon",
+          start: "09:00",
+          end: "17:00",
+        });
+      }
+      await fetchOpeningHours();
+    } catch (e: unknown) {
+      setOpeningError(getApiErrorMessage(e, "Failed to delete opening hour"));
+    } finally {
+      setOpeningLoading(false);
     }
   };
 
   /* ─────────────────────────────────────
      Services state
   ───────────────────────────────────── */
-  const [services, setServices] = useState<Service[]>([
-    {
-      id: 1,
-      name: "Basic Consultation",
-      price: "99.99",
-      start: "11:00",
-      end: "18:00",
-    },
-    {
-      id: 2,
-      name: "Standard Website",
-      price: "199.99",
-      start: "10:00",
-      end: "17:00",
-    },
-  ]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [servicesLoading, setServicesLoading] = useState(false);
+  const [servicesError, setServicesError] = useState<string | null>(null);
 
   const [serviceForm, setServiceForm] = useState<{
     id: number | null;
     name: string;
+    description: string;
     price: string;
-    start: string;
-    end: string;
+    start_time: string;
+    end_time: string;
+    duration: string;
   }>({
     id: null,
     name: "",
+    description: "",
     price: "",
-    start: "",
-    end: "",
+    start_time: "",
+    end_time: "",
+    duration: "",
   });
 
-  const handleServiceSubmit = (e: FormEvent) => {
+  const fetchServices = useCallback(async () => {
+    setServicesLoading(true);
+    setServicesError(null);
+    try {
+      const res = await requestWithSlashFallback((ep) => userapi.get(ep), SERVICE_ENDPOINT);
+      const payload = res?.data;
+      const list = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.results)
+        ? payload.results
+        : Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload?.list)
+        ? payload.list
+        : [];
+      setServices(list.map(normalizeService).filter((s: Service) => s.id && s.name));
+    } catch (e: unknown) {
+      setServicesError(getApiErrorMessage(e, "Failed to load services"));
+    } finally {
+      setServicesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchServices();
+  }, [fetchServices]);
+
+  const handleServiceSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!serviceForm.name || !serviceForm.price) return;
 
-    if (serviceForm.id === null) {
-      const newService: Service = {
-        id: Date.now(),
-        name: serviceForm.name,
-        price: serviceForm.price,
-        start: serviceForm.start,
-        end: serviceForm.end,
-      };
-      setServices((prev) => [...prev, newService]);
-    } else {
-      setServices((prev) =>
-        prev.map((s) =>
-          s.id === serviceForm.id
-            ? {
-                ...s,
-                name: serviceForm.name,
-                price: serviceForm.price,
-                start: serviceForm.start,
-                end: serviceForm.end,
-              }
-            : s
-        )
-      );
+    const parsedPrice = parsePriceToNumber(serviceForm.price);
+    if (parsedPrice === null) {
+      setServicesError("Price must be a valid number");
+      return;
     }
 
-    setServiceForm({
-      id: null,
-      name: "",
-      price: "",
-      start: "",
-      end: "",
-    });
+    setServicesLoading(true);
+    setServicesError(null);
+
+    try {
+      if (serviceForm.id === null) {
+        // create
+        const duration = serviceForm.duration.trim();
+        await requestWithSlashFallback(
+          (ep) =>
+            userapi.post(ep, {
+              name: serviceForm.name,
+              description: serviceForm.description,
+              price: parsedPrice,
+              ...(duration ? { duration: Number(duration) } : {}),
+              start_time: normalizeTimeHHmmss(serviceForm.start_time),
+              end_time: normalizeTimeHHmmss(serviceForm.end_time),
+            }),
+          SERVICE_ENDPOINT
+        );
+      } else {
+        // update: PATCH /auth/company/service/{id}/
+        const detail = `${withTrailingSlash(SERVICE_ENDPOINT)}${serviceForm.id}/`;
+        const duration = serviceForm.duration.trim();
+        await requestWithSlashFallback(
+          (ep) =>
+            userapi.patch(ep, {
+              name: serviceForm.name,
+              description: serviceForm.description,
+              price: parsedPrice,
+              ...(duration ? { duration: Number(duration) } : {}),
+              ...(serviceForm.start_time ? { start_time: normalizeTimeHHmmss(serviceForm.start_time) } : {}),
+              ...(serviceForm.end_time ? { end_time: normalizeTimeHHmmss(serviceForm.end_time) } : {}),
+            }),
+          detail
+        );
+      }
+
+      setServiceForm({
+        id: null,
+        name: "",
+        description: "",
+        price: "",
+        start_time: "",
+        end_time: "",
+        duration: "",
+      });
+
+      await fetchServices();
+    } catch (e: unknown) {
+      setServicesError(getApiErrorMessage(e, "Failed to save service"));
+    } finally {
+      setServicesLoading(false);
+    }
   };
 
   const handleServiceEdit = (service: Service) => {
     setServiceForm({
       id: service.id,
       name: service.name,
+      description: service.description,
       price: service.price,
-      start: service.start,
-      end: service.end,
+      start_time: service.start_time,
+      end_time: service.end_time,
+      duration: typeof service.duration === "number" ? String(service.duration) : "",
     });
   };
 
-  const handleServiceDelete = (id: number) => {
-    setServices((prev) => prev.filter((s) => s.id !== id));
-    if (serviceForm.id === id) {
-      setServiceForm({
-        id: null,
-        name: "",
-        price: "",
-        start: "",
-        end: "",
-      });
+  const handleServiceDelete = async (id: number) => {
+    setServicesLoading(true);
+    setServicesError(null);
+    try {
+      const detail = `${withTrailingSlash(SERVICE_ENDPOINT)}${id}/`;
+      await requestWithSlashFallback((ep) => userapi.delete(ep), detail);
+
+      if (serviceForm.id === id) {
+        setServiceForm({
+          id: null,
+          name: "",
+          description: "",
+          price: "",
+          start_time: "",
+          end_time: "",
+          duration: "",
+        });
+      }
+
+      await fetchServices();
+    } catch (e: unknown) {
+      setServicesError(getApiErrorMessage(e, "Failed to delete service"));
+    } finally {
+      setServicesLoading(false);
     }
   };
 
   /* ─────────────────────────────────────
      Tone & personality
   ───────────────────────────────────── */
-  const [tone, setTone] = useState(5);
+  const [tonePreset, setTonePreset] = useState<string>("standard");
+  const [toneSaving, setToneSaving] = useState(false);
+
+  const handleTonePresetChange = async (nextTone: string) => {
+    const prev = tonePreset;
+    setTonePreset(nextTone);
+    setToneSaving(true);
+    setCompanyError(null);
+
+    try {
+      const res = await requestWithSlashFallback(
+        (ep) => userapi.patch(ep, { tone: nextTone }),
+        COMPANY_ENDPOINT
+      );
+      const normalized = normalizeCompany(res?.data);
+      setCompany(normalized);
+    } catch (e: unknown) {
+      setTonePreset(prev);
+      setCompanyError(getApiErrorMessage(e, "Failed to update tone"));
+    } finally {
+      setToneSaving(false);
+    }
+  };
 
   /* ─────────────────────────────────────
      Train AI – file upload
   ───────────────────────────────────── */
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [trainingUploading, setTrainingUploading] = useState(false);
+  const [trainingError, setTrainingError] = useState<string | null>(null);
+
+  const [trainingFiles, setTrainingFiles] = useState<TrainingFile[]>([]);
+  const [trainingFilesLoading, setTrainingFilesLoading] = useState(false);
+  const [trainingFilesError, setTrainingFilesError] = useState<string | null>(null);
+  const [trainingFileDeletingId, setTrainingFileDeletingId] = useState<number | null>(null);
+
+  const fetchTrainingFiles = useCallback(async () => {
+    setTrainingFilesLoading(true);
+    setTrainingFilesError(null);
+    try {
+      const res = await requestWithSlashFallback(
+        (ep) => userapi.get(ep),
+        AI_TRAINING_FILES_ENDPOINT
+      );
+      const payload = res?.data;
+      const list = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.results)
+        ? payload.results
+        : Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload?.list)
+        ? payload.list
+        : [];
+
+      const normalized = list
+        .map(normalizeTrainingFile)
+        .filter((f: TrainingFile) => Boolean(f.id) && Boolean(f.file))
+        .sort((a: TrainingFile, b: TrainingFile) => {
+          const at = a.uploaded_at ? Date.parse(a.uploaded_at) : 0;
+          const bt = b.uploaded_at ? Date.parse(b.uploaded_at) : 0;
+          return bt - at;
+        });
+
+      setTrainingFiles(normalized);
+    } catch (e: unknown) {
+      setTrainingFilesError(getApiErrorMessage(e, "Failed to load training files"));
+    } finally {
+      setTrainingFilesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTrainingFiles();
+  }, [fetchTrainingFiles]);
 
   const handleFileClick = () => {
     fileInputRef.current?.click();
   };
 
+  const uploadTrainingFiles = async (files: File[]) => {
+    if (!files.length) return;
+
+    setTrainingUploading(true);
+    setTrainingError(null);
+    try {
+      const form = new FormData();
+      for (const file of files) {
+        form.append("files", file);
+      }
+
+      await requestWithSlashFallback(
+        (ep) =>
+          userapi.post(ep, form, {
+            headers: {
+              "Content-Type": "multipart/form-data",
+            },
+          }),
+        AI_TRAINING_FILES_ENDPOINT
+      );
+
+      setUploadedFiles([]);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      await fetchTrainingFiles();
+    } catch (e: unknown) {
+      setTrainingError(getApiErrorMessage(e, "Failed to upload training files"));
+    } finally {
+      setTrainingUploading(false);
+    }
+  };
+
+  const handleDeleteTrainingFile = async (id: number) => {
+    setTrainingFileDeletingId(id);
+    setTrainingFilesError(null);
+    try {
+      const detail = trainingFileDetailEndpoint(id);
+      await requestWithSlashFallback((ep) => userapi.delete(ep), detail);
+      await fetchTrainingFiles();
+    } catch (e: unknown) {
+      setTrainingFilesError(getApiErrorMessage(e, "Failed to delete training file"));
+    } finally {
+      setTrainingFileDeletingId(null);
+    }
+  };
+
   const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-    setUploadedFiles(Array.from(files));
+    const list = Array.from(files);
+    setUploadedFiles(list);
+    void uploadTrainingFiles(list);
+  };
+
+  const handleDropFiles = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const list = Array.from(e.dataTransfer.files ?? []).filter((f) => f.size > 0);
+    if (!list.length) return;
+    setUploadedFiles(list);
+    void uploadTrainingFiles(list);
+  };
+
+  const handleDragOverFiles = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
   };
 
   /* ─────────────────────────────────────
      Knowledge base (topics + modal)
   ───────────────────────────────────── */
-  const [topics, setTopics] = useState<KnowledgeTopic[]>([
-    {
-      id: 1,
-      title: "Day Pass",
-      description: "Information about day passes.",
-      createdAt: "2023-10-15",
-    },
-    {
-      id: 2,
-      title: "Opening Hours",
-      description: "Details about when we are open.",
-      createdAt: "2023-10-15",
-    },
-  ]);
+  const [topics, setTopics] = useState<KnowledgeTopic[]>([]);
+  const [topicsLoading, setTopicsLoading] = useState(false);
+  const [topicsError, setTopicsError] = useState<string | null>(null);
+  const [topicSaving, setTopicSaving] = useState(false);
+  const [topicDeletingId, setTopicDeletingId] = useState<number | null>(null);
+
+  const fetchTopics = useCallback(async () => {
+    setTopicsLoading(true);
+    setTopicsError(null);
+    try {
+      const res = await requestWithSlashFallback(
+        (ep) => userapi.get(ep),
+        KNOWLEDGE_BASE_ENDPOINT
+      );
+      const payload = res?.data;
+      const list = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.results)
+        ? payload.results
+        : Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload?.list)
+        ? payload.list
+        : [];
+
+      const normalized = list
+        .map(normalizeKnowledgeTopic)
+        .filter((t: KnowledgeTopic) => Boolean(t.id) && Boolean(t.title))
+        .sort((a: KnowledgeTopic, b: KnowledgeTopic) => {
+          const at = a.createdAt ? Date.parse(a.createdAt) : 0;
+          const bt = b.createdAt ? Date.parse(b.createdAt) : 0;
+          return bt - at;
+        });
+
+      setTopics(normalized);
+    } catch (e: unknown) {
+      setTopicsError(getApiErrorMessage(e, "Failed to load topics"));
+    } finally {
+      setTopicsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTopics();
+  }, [fetchTopics]);
 
   const [isKbModalOpen, setIsKbModalOpen] = useState(false);
   const [kbForm, setKbForm] = useState<{
@@ -405,35 +1109,50 @@ const AIAssistantDashboard: React.FC = () => {
     setIsKbModalOpen(true);
   };
 
-  const handleKbSubmit = (e: FormEvent) => {
+  const handleKbSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!kbForm.title || !kbForm.description) return;
 
-    if (kbForm.id === null) {
-      const newTopic: KnowledgeTopic = {
-        id: Date.now(),
-        title: kbForm.title,
-        description: kbForm.description,
-        createdAt: new Date().toISOString().slice(0, 10),
-      };
-      setTopics((prev) => [...prev, newTopic]);
-    } else {
-      setTopics((prev) =>
-        prev.map((t) =>
-          t.id === kbForm.id
-            ? { ...t, title: kbForm.title, description: kbForm.description }
-            : t
-        )
-      );
-    }
+    setTopicSaving(true);
+    setTopicsError(null);
+    try {
+      if (kbForm.id === null) {
+        await requestWithSlashFallback(
+          (ep) => userapi.post(ep, { name: kbForm.title, details: kbForm.description }),
+          KNOWLEDGE_BASE_ENDPOINT
+        );
+      } else {
+        const detail = knowledgeBaseDetailEndpoint(kbForm.id);
+        await requestWithSlashFallback(
+          (ep) => userapi.patch(ep, { name: kbForm.title, details: kbForm.description }),
+          detail
+        );
+      }
 
-    setIsKbModalOpen(false);
+      setIsKbModalOpen(false);
+      setKbForm({ id: null, title: "", description: "" });
+      await fetchTopics();
+    } catch (e: unknown) {
+      setTopicsError(getApiErrorMessage(e, "Failed to save topic"));
+    } finally {
+      setTopicSaving(false);
+    }
   };
 
-  const handleTopicDelete = (id: number) => {
-    setTopics((prev) => prev.filter((t) => t.id !== id));
-    if (kbForm.id === id) {
-      setKbForm({ id: null, title: "", description: "" });
+  const handleTopicDelete = async (id: number) => {
+    setTopicDeletingId(id);
+    setTopicsError(null);
+    try {
+      const detail = knowledgeBaseDetailEndpoint(id);
+      await requestWithSlashFallback((ep) => userapi.delete(ep), detail);
+      if (kbForm.id === id) {
+        setKbForm({ id: null, title: "", description: "" });
+      }
+      await fetchTopics();
+    } catch (e: unknown) {
+      setTopicsError(getApiErrorMessage(e, "Failed to delete topic"));
+    } finally {
+      setTopicDeletingId(null);
     }
   };
 
@@ -450,8 +1169,20 @@ const AIAssistantDashboard: React.FC = () => {
           <input
             className="bg-gray-900 p-3 rounded-lg"
             placeholder="Company name here"
+            value={companyForm.name}
+            onChange={(e) => setCompanyForm((f) => ({ ...f, name: e.target.value }))}
           />
-          <select className="bg-gray-900 p-3 rounded-lg">
+          <select
+            className="bg-gray-900 p-3 rounded-lg"
+            value={companyForm.industry || ""}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+              setCompanyForm((f) => ({ ...f, industry: e.target.value }))
+            }
+          >
+            {/* Ensure current value shows even if not in the list */}
+            {companyForm.industry && !["Technology", "Education", "Health"].includes(companyForm.industry) && (
+              <option value={companyForm.industry}>{companyForm.industry}</option>
+            )}
             <option>Technology</option>
             <option>Education</option>
             <option>Health</option>
@@ -459,12 +1190,67 @@ const AIAssistantDashboard: React.FC = () => {
           <textarea
             className="col-span-1 md:col-span-2 bg-gray-900 p-3 rounded-lg"
             placeholder="What does your company do?"
+            value={companyForm.description}
+            onChange={(e) => setCompanyForm((f) => ({ ...f, description: e.target.value }))}
           />
         </div>
 
-        {/* Opening Hours list */}
+
+
+        {/* Location */}
+        <div>
+          <h3 className="font-semibold mb-2">Location</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <input
+              className="bg-gray-900 p-3 rounded-lg"
+              placeholder="Address"
+              value={companyForm.address}
+              onChange={(e) => setCompanyForm((f) => ({ ...f, address: e.target.value }))}
+            />
+            <input
+              className="bg-gray-900 p-3 rounded-lg"
+              placeholder="City"
+              value={companyForm.city}
+              onChange={(e) => setCompanyForm((f) => ({ ...f, city: e.target.value }))}
+            />
+            <input
+              className="bg-gray-900 p-3 rounded-lg"
+              placeholder="Country"
+              value={companyForm.country}
+              onChange={(e) => setCompanyForm((f) => ({ ...f, country: e.target.value }))}
+            />
+          </div>
+
+          {/* Website under location (as requested) */}
+          <div className="mt-3">
+            <h4 className="font-semibold mb-1 text-sm">Website URL</h4>
+            <input
+              className="bg-gray-900 p-3 rounded-lg w-full"
+              placeholder="https://your-company.com"
+              value={companyForm.website}
+              onChange={(e) => setCompanyForm((f) => ({ ...f, website: e.target.value }))}
+            />
+          </div>
+        </div>
+
+        {companyError && <div className="text-sm text-red-400">{companyError}</div>}
+
+        <button
+          type="button"
+          onClick={handleCompanyUpdate}
+          disabled={companyLoading}
+          className="mt-2 bg-blue-600 px-6 py-2 rounded-lg disabled:opacity-60"
+        >
+          {companyLoading ? "Updating..." : "Update"}
+        </button>
+
+          {/* Opening Hours list */}
         <div>
           <h3 className="font-semibold mb-2">Opening Hours</h3>
+
+            {openingError && (
+              <div className="mb-3 text-sm text-red-400">{openingError}</div>
+            )}
 
           <div className="flex flex-wrap gap-3 mb-4">
             {openingSlots.map((slot) => (
@@ -473,7 +1259,9 @@ const AIAssistantDashboard: React.FC = () => {
                 className="bg-gray-900 px-4 py-3 rounded-xl flex items-center gap-3"
               >
                 <div>
-                  <div className="font-semibold">{slot.day}</div>
+                  <div className="font-semibold">
+                    {DAY_LABEL[slot.day as DayCode] ?? slot.day}
+                  </div>
                   <div className="text-sm text-gray-300">
                     {slot.start} – {slot.end}
                   </div>
@@ -482,6 +1270,7 @@ const AIAssistantDashboard: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleOpeningEdit(slot)}
+                      disabled={openingLoading}
                     className="text-xs bg-blue-600 px-3 py-1 rounded-lg"
                   >
                     Update
@@ -489,6 +1278,7 @@ const AIAssistantDashboard: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleOpeningDelete(slot.id)}
+                      disabled={openingLoading}
                     className="text-xs bg-red-600 px-3 py-1 rounded-lg"
                   >
                     Delete
@@ -497,11 +1287,15 @@ const AIAssistantDashboard: React.FC = () => {
               </div>
             ))}
 
-            {openingSlots.length === 0 && (
+              {!openingLoading && openingSlots.length === 0 && (
               <p className="text-sm text-gray-400">
                 No opening hours added yet.
               </p>
             )}
+
+              {openingLoading && (
+                <p className="text-sm text-gray-400">Loading...</p>
+              )}
           </div>
 
           {/* Opening hours form */}
@@ -516,21 +1310,14 @@ const AIAssistantDashboard: React.FC = () => {
                 setOpeningForm((f) => ({ ...f, day: e.target.value }))
               }
             >
-              {[
-                "Monday",
-                "Tuesday",
-                "Wednesday",
-                "Thursday",
-                "Friday",
-                "Saturday",
-                "Sunday",
-              ].map((day) => (
-                <option key={day} value={day}>
-                  {day}
+              {DAY_OPTIONS.map((d) => (
+                <option key={d.code} value={d.code}>
+                  {d.label}
                 </option>
               ))}
             </select>
             <input
+              type="time"
               className="bg-gray-900 p-2 rounded-lg w-28"
               value={openingForm.start}
               onChange={(e) =>
@@ -540,6 +1327,7 @@ const AIAssistantDashboard: React.FC = () => {
             />
             <span>to</span>
             <input
+              type="time"
               className="bg-gray-900 p-2 rounded-lg w-28"
               value={openingForm.end}
               onChange={(e) =>
@@ -549,73 +1337,71 @@ const AIAssistantDashboard: React.FC = () => {
             />
             <button
               type="submit"
+              disabled={openingLoading}
               className="bg-blue-600 px-4 py-2 rounded-lg text-sm font-semibold"
             >
-              {openingForm.id === null ? "Add Slot" : "Save Changes"}
+              {openingLoading
+                ? "Saving..."
+                : openingForm.id === null
+                ? "Add Slot"
+                : "Save Changes"}
             </button>
           </form>
         </div>
-
-        {/* Location */}
-        <div>
-          <h3 className="font-semibold mb-2">Location</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <input
-              className="bg-gray-900 p-3 rounded-lg"
-              placeholder="Address"
-            />
-            <input className="bg-gray-900 p-3 rounded-lg" placeholder="City" />
-            <input
-              className="bg-gray-900 p-3 rounded-lg"
-              placeholder="Country"
-            />
-          </div>
-
-          {/* Website under location (as requested) */}
-          <div className="mt-3">
-            <h4 className="font-semibold mb-1 text-sm">Website URL</h4>
-            <input
-              className="bg-gray-900 p-3 rounded-lg w-full"
-              placeholder="https://your-company.com"
-            />
-          </div>
-        </div>
-
-        <button className="mt-2 bg-blue-600 px-6 py-2 rounded-lg">
-          Update
-        </button>
       </section>
 
       {/* Prices & Services */}
       <section className="bg-[#272727] rounded-2xl p-6 shadow-lg space-y-4">
         <h2 className="text-xl font-semibold">Prices & Services (Optional)</h2>
 
+        {servicesError ? (
+          <p className="text-sm text-red-400">{servicesError}</p>
+        ) : null}
+
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="text-gray-400 border-b border-gray-900">
                 <th className="py-2">Service Name</th>
+                <th className="py-2">Description</th>
                 <th className="py-2">Price</th>
                 <th className="py-2">Start Time</th>
                 <th className="py-2">End Time</th>
+                <th className="py-2">Duration (min)</th>
                 <th className="py-2">Actions</th>
               </tr>
             </thead>
             <tbody>
+              {servicesLoading && (
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="py-4 text-center text-gray-400 text-sm"
+                  >
+                    Loading services...
+                  </td>
+                </tr>
+              )}
+
               {services.map((service) => (
                 <tr
                   key={service.id}
                   className="border-b border-gray-900 text-sm"
                 >
                   <td className="py-2">{service.name}</td>
+                  <td className="py-2">{service.description || "—"}</td>
                   <td className="py-2">${service.price}</td>
-                  <td className="py-2">{service.start}</td>
-                  <td className="py-2">{service.end}</td>
+                  <td className="py-2">{service.start_time}</td>
+                  <td className="py-2">{service.end_time}</td>
+                  <td className="py-2">
+                    {typeof service.duration === "number" ? service.duration : "—"}
+                  </td>
                   <td className="py-2">
                     <div className="flex gap-2">
                       <button
                         type="button"
                         onClick={() => handleServiceEdit(service)}
+                        disabled={servicesLoading}
                         className="text-xs bg-blue-600 px-3 py-1 rounded-lg"
                       >
                         Update
@@ -623,6 +1409,7 @@ const AIAssistantDashboard: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleServiceDelete(service.id)}
+                        disabled={servicesLoading}
                         className="text-xs bg-red-600 px-3 py-1 rounded-lg"
                       >
                         Delete
@@ -632,10 +1419,10 @@ const AIAssistantDashboard: React.FC = () => {
                 </tr>
               ))}
 
-              {services.length === 0 && (
+              {!servicesLoading && services.length === 0 && (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={7}
                     className="py-4 text-center text-gray-400 text-sm"
                   >
                     No services added yet.
@@ -649,7 +1436,7 @@ const AIAssistantDashboard: React.FC = () => {
         {/* Service form */}
         <form
           onSubmit={handleServiceSubmit}
-          className="grid grid-cols-1 md:grid-cols-5 gap-3 pt-3"
+          className="grid grid-cols-1 md:grid-cols-7 gap-3 pt-3"
         >
           <input
             className="bg-gray-900 p-2 rounded-lg"
@@ -657,6 +1444,14 @@ const AIAssistantDashboard: React.FC = () => {
             value={serviceForm.name}
             onChange={(e) =>
               setServiceForm((f) => ({ ...f, name: e.target.value }))
+            }
+          />
+          <input
+            className="bg-gray-900 p-2 rounded-lg"
+            placeholder="Description"
+            value={serviceForm.description}
+            onChange={(e) =>
+              setServiceForm((f) => ({ ...f, description: e.target.value }))
             }
           />
           <input
@@ -669,25 +1464,43 @@ const AIAssistantDashboard: React.FC = () => {
           />
           <input
             className="bg-gray-900 p-2 rounded-lg"
-            placeholder="Start Time"
-            value={serviceForm.start}
+            placeholder="Start Time (e.g., 11:00 am)"
+            value={serviceForm.start_time}
             onChange={(e) =>
-              setServiceForm((f) => ({ ...f, start: e.target.value }))
+              setServiceForm((f) => ({ ...f, start_time: e.target.value }))
             }
           />
           <input
             className="bg-gray-900 p-2 rounded-lg"
-            placeholder="End Time"
-            value={serviceForm.end}
+            placeholder="End Time (e.g., 6:00 pm)"
+            value={serviceForm.end_time}
             onChange={(e) =>
-              setServiceForm((f) => ({ ...f, end: e.target.value }))
+              setServiceForm((f) => ({ ...f, end_time: e.target.value }))
+            }
+          />
+          <input
+            type="number"
+            min={0}
+            className="bg-gray-900 p-2 rounded-lg"
+            placeholder="Duration (min)"
+            value={serviceForm.duration}
+            onChange={(e) =>
+              setServiceForm((f) => ({
+                ...f,
+                duration: e.target.value,
+              }))
             }
           />
           <button
             type="submit"
+            disabled={servicesLoading}
             className="bg-blue-600 px-4 py-2 rounded-lg text-sm font-semibold"
           >
-            {serviceForm.id === null ? "+ Add" : "Save Changes"}
+            {servicesLoading
+              ? "Saving..."
+              : serviceForm.id === null
+              ? "+ Add"
+              : "Save Changes"}
           </button>
         </form>
       </section>
@@ -698,51 +1511,136 @@ const AIAssistantDashboard: React.FC = () => {
         <div>
           <h3 className="font-semibold mb-2">Tone & Personality</h3>
           <p className="text-sm text-gray-300">
-            Adjust how the AI speaks for your brand.
+            Choose how the AI speaks for your brand.
           </p>
-          <input
-            type="range"
-            min="0"
-            max="10"
-            value={tone}
-            onChange={(e) => setTone(Number(e.target.value))}
-            className="w-full mt-3"
-          />
-          <div className="mt-1 text-xs text-gray-400">
-            Current tone: <span className="font-semibold">{tone}</span>
-          </div>
-          <button className="bg-blue-600 mt-3 px-4 py-2 rounded-lg">
-            Save Tone
-          </button>
+          <select
+            className="bg-gray-900 p-3 rounded-lg w-full mt-3"
+            value={tonePreset}
+            onChange={(e) => handleTonePresetChange(e.target.value)}
+            disabled={toneSaving || companyLoading}
+          >
+            <option value="standard">Standard</option>
+            <option value="normal">Normal</option>
+            <option value="friendly">Friendly</option>
+            <option value="professional">Professional</option>
+            <option value="corporate">Corporate</option>
+            <option value="casual">Casual</option>
+            <option value="supportive">Supportive</option>
+            <option value="empathetic">Empathetic</option>
+            <option value="technical">Technical</option>
+            <option value="expert">Expert</option>
+            <option value="playful">Playful</option>
+            <option value="humorous">Humorous</option>
+            <option value="minimal">Minimal</option>
+            <option value="direct">Direct</option>
+            <option value="educational">Educational</option>
+            <option value="tutor">Tutor</option>
+            <option value="sales">Sales</option>
+            <option value="persuasive">Persuasive</option>
+            <option value="creative">Creative</option>
+            <option value="storytelling">Storytelling</option>
+            <option value="motivational">Motivational</option>
+            <option value="coach">Coach</option>
+            <option value="flirty">Flirty</option>
+          </select>
         </div>
 
         {/* Train AI */}
         <div>
           <h3 className="font-semibold mb-2">Train AI</h3>
+          <p className="text-sm text-gray-300">
+            Upload files to train your assistant.
+          </p>
+
           <div
             onClick={handleFileClick}
-            className="border-2 border-dashed border-gray-900 p-6 text-center rounded-xl cursor-pointer hover:bg-gray-900/40"
+            onDragOver={handleDragOverFiles}
+            onDrop={handleDropFiles}
+            className="mt-3 border-2 border-dashed border-gray-900 rounded-xl p-6 cursor-pointer hover:bg-gray-900/40"
           >
-            <p>Drag files here, or click to browse</p>
-            <p className="text-gray-400 text-sm mt-2">
-              Supports PDF, DOCX, CSV (max 10MB each)
-            </p>
+            <div className="text-center">
+              <p className="font-medium">Drag files here, or click to browse</p>
+              <p className="text-gray-400 text-sm mt-2">
+                Supports PDF, DOCX, CSV (max 10MB each)
+              </p>
+              {trainingUploading && (
+                <p className="text-gray-400 text-sm mt-2">Uploading...</p>
+              )}
+              {trainingError && (
+                <p className="text-red-400 text-sm mt-2">{trainingError}</p>
+              )}
+            </div>
           </div>
+
           <input
             type="file"
             multiple
             ref={fileInputRef}
             onChange={handleFilesSelected}
+            accept=".pdf,.doc,.docx,.csv"
             className="hidden"
           />
 
-          {uploadedFiles.length > 0 && (
-            <ul className="mt-3 space-y-1 text-xs text-gray-300">
-              {uploadedFiles.map((file) => (
-                <li key={file.name}>• {file.name}</li>
-              ))}
-            </ul>
-          )}
+          <div className="mt-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-gray-200">Uploaded files</p>
+              <p className="text-xs text-gray-400">{trainingFiles.length}</p>
+            </div>
+
+            {trainingFilesError && (
+              <p className="text-sm text-red-400 mt-2">{trainingFilesError}</p>
+            )}
+
+            <div className="mt-3 rounded-xl bg-gray-900">
+              {trainingFilesLoading ? (
+                <p className="text-sm text-gray-400 p-4">Loading...</p>
+              ) : trainingFiles.length === 0 ? (
+                <p className="text-sm text-gray-400 p-4">No files uploaded yet.</p>
+              ) : (
+                <div className="max-h-56 overflow-y-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="sticky top-0 bg-gray-900">
+                      <tr className="text-gray-400 border-b border-gray-800">
+                        <th className="py-2 px-3">File</th>
+                        <th className="py-2 px-3 whitespace-nowrap">Uploaded</th>
+                        <th className="py-2 px-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trainingFiles.map((tf) => (
+                        <tr key={tf.id} className="border-b border-gray-800">
+                          <td className="py-2 px-3">
+                            <p className="text-gray-200 truncate" title={tf.file}>
+                              {filenameFromPath(tf.file)}
+                            </p>
+                          </td>
+                          <td className="py-2 px-3 whitespace-nowrap text-gray-400">
+                            {tf.uploaded_at
+                              ? new Date(tf.uploaded_at).toLocaleDateString()
+                              : "—"}
+                          </td>
+                          <td className="py-2 px-3">
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                disabled={trainingFileDeletingId === tf.id}
+                                onClick={() => handleDeleteTrainingFile(tf.id)}
+                                className="text-xs bg-red-600 px-3 py-1 rounded-lg"
+                              >
+                                {trainingFileDeletingId === tf.id
+                                  ? "Deleting..."
+                                  : "Delete"}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -753,42 +1651,54 @@ const AIAssistantDashboard: React.FC = () => {
           <button
             className="bg-blue-600 px-4 py-2 rounded-lg"
             onClick={openNewTopicModal}
+            disabled={topicsLoading}
           >
             + Add New Topic
           </button>
         </div>
 
+        {topicsError && (
+          <p className="text-sm text-red-400">{topicsError}</p>
+        )}
+
         <div className="space-y-3">
-          {topics.map((topic) => (
-            <div
-              key={topic.id}
-              className="bg-gray-900 p-4 rounded-xl flex justify-between items-start gap-4"
-            >
-              <div>
-                <h4 className="font-semibold">{topic.title}</h4>
-                <p className="text-gray-400 text-sm mt-1">
-                  {topic.description}
-                </p>
-                <p className="text-gray-500 text-xs mt-1">
-                  Added: {topic.createdAt}
-                </p>
+          {topicsLoading ? (
+            <p className="text-sm text-gray-400">Loading topics...</p>
+          ) : (
+            topics.map((topic) => (
+              <div
+                key={topic.id}
+                className="bg-gray-900 p-4 rounded-xl flex justify-between items-start gap-4"
+              >
+                <div>
+                  <h4 className="font-semibold">{topic.title}</h4>
+                  <p className="text-gray-400 text-sm mt-1">{topic.description}</p>
+                  <p className="text-gray-500 text-xs mt-1">
+                    Added:{" "}
+                    {topic.createdAt
+                      ? new Date(topic.createdAt).toLocaleDateString()
+                      : "—"}
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    className="bg-blue-500 px-3 py-1 rounded-lg text-xs disabled:opacity-60"
+                    onClick={() => openEditTopicModal(topic)}
+                    disabled={topicSaving || topicDeletingId === topic.id}
+                  >
+                    ✏️ Edit
+                  </button>
+                  <button
+                    className="bg-red-600 px-3 py-1 rounded-lg text-xs disabled:opacity-60"
+                    onClick={() => handleTopicDelete(topic.id)}
+                    disabled={topicDeletingId === topic.id}
+                  >
+                    {topicDeletingId === topic.id ? "Deleting..." : "🗑️ Delete"}
+                  </button>
+                </div>
               </div>
-              <div className="flex flex-shrink-0 gap-2">
-                <button
-                  className="bg-blue-500 px-3 py-1 rounded-lg text-xs"
-                  onClick={() => openEditTopicModal(topic)}
-                >
-                  ✏️ Edit
-                </button>
-                <button
-                  className="bg-red-600 px-3 py-1 rounded-lg text-xs"
-                  onClick={() => handleTopicDelete(topic.id)}
-                >
-                  🗑️ Delete
-                </button>
-              </div>
-            </div>
-          ))}
+            ))
+          )}
 
           {topics.length === 0 && (
             <p className="text-sm text-gray-400">
@@ -835,14 +1745,20 @@ const AIAssistantDashboard: React.FC = () => {
                   type="button"
                   onClick={() => setIsKbModalOpen(false)}
                   className="px-4 py-2 rounded-lg bg-gray-800 text-sm"
+                  disabled={topicSaving}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-2 rounded-lg bg-blue-600 text-sm font-semibold"
+                  disabled={topicSaving}
                 >
-                  {kbForm.id === null ? "Add Topic" : "Save Changes"}
+                  {topicSaving
+                    ? "Saving..."
+                    : kbForm.id === null
+                    ? "Add Topic"
+                    : "Save Changes"}
                 </button>
               </div>
             </form>

@@ -1,5 +1,6 @@
 "use client";
-import React, { useState } from "react";
+import { useSession } from "next-auth/react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 /**
  * Local inline Send SVG component to avoid dependency on 'lucide-react'.
@@ -28,38 +29,163 @@ interface Message {
   timestamp: string;
 }
 
+const TESTCHAT_WS_BASE = "wss://ape-in-eft.ngrok-free.app/ws/testchat/";
+
+function formatTodayLabel(date = new Date()) {
+  return date.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function safeJsonParse(value: unknown): unknown {
+  if (typeof value !== "string") return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 const TestChatPage: React.FC = () => {
+  const { data: session } = useSession();
+  const sessionAccessToken = useMemo(() => {
+    if (!session) return undefined;
+    const maybe = (session as unknown as { accessToken?: unknown }).accessToken;
+    return typeof maybe === "string" ? maybe : undefined;
+  }, [session]);
+  const accessToken = useMemo(() => {
+    if (sessionAccessToken) return sessionAccessToken;
+    if (typeof window === "undefined") return undefined;
+    return localStorage.getItem("access_token") ?? undefined;
+  }, [sessionAccessToken]);
+
   // =============================
-  // 🔹 Fake Data / State
+  // 🔹 State
   // =============================
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 1,
-      sender: "user",
-      text: "Hi, I’d like to know what your delivery is.",
-      timestamp: "October 27, 2025",
-    },
-    {
-      id: 2,
-      sender: "bot",
-      text: "Our average delivery time is 2–3 business days.\nWould you like me to check for your specific region?",
-      timestamp: "October 27, 2025",
-    },
-    {
-      id: 3,
-      sender: "user",
-      text: "Yes, please!",
-      timestamp: "October 27, 2025",
-    },
-    {
-      id: 4,
-      sender: "bot",
-      text: "Great! Can you provide your postal code?",
-      timestamp: "October 27, 2025",
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
 
   const [input, setInput] = useState("");
+  const [isBotTyping, setIsBotTyping] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<
+    "disconnected" | "connecting" | "connected" | "error"
+  >(accessToken ? "connecting" : "disconnected");
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const reconnectAttemptRef = useRef(0);
+
+  const scrollEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    scrollEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isBotTyping]);
+
+  // =============================
+  // 🔹 WebSocket connection
+  // =============================
+  useEffect(() => {
+    let stopped = false;
+
+    const clearReconnectTimer = () => {
+      if (reconnectTimerRef.current != null) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+    };
+
+    const closeSocket = () => {
+      const ws = wsRef.current;
+      wsRef.current = null;
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        ws.close();
+      }
+    };
+
+    const connect = () => {
+      clearReconnectTimer();
+      closeSocket();
+
+      if (!accessToken) {
+        setConnectionStatus("disconnected");
+        return;
+      }
+
+      setConnectionStatus("connecting");
+      const wsUrl = `${TESTCHAT_WS_BASE}?token=${encodeURIComponent(accessToken)}`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (stopped) return;
+        reconnectAttemptRef.current = 0;
+        setConnectionStatus("connected");
+      };
+
+      ws.onmessage = (ev) => {
+        if (stopped) return;
+        const parsed = safeJsonParse(String(ev.data));
+        if (!parsed || typeof parsed !== "object") return;
+
+        const data = parsed as Record<string, unknown>;
+
+        // Backend can emit typing signals
+        if (typeof data.status === "string" && data.status.toLowerCase() === "typing") {
+          setIsBotTyping(true);
+          return;
+        }
+
+        // Expected: { sender: "ai", message: { content: "..." } }
+        let content: string | null = null;
+        const message = data.message;
+        if (typeof message === "string") {
+          content = message;
+        } else if (message && typeof message === "object") {
+          const maybeContent = (message as Record<string, unknown>).content;
+          if (typeof maybeContent === "string") content = maybeContent;
+        } else if (typeof data.content === "string") {
+          content = data.content;
+        }
+
+        if (!content) return;
+
+        setIsBotTyping(false);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now() + Math.floor(Math.random() * 1000),
+            sender: "bot",
+            text: content,
+            timestamp: formatTodayLabel(),
+          },
+        ]);
+      };
+
+      ws.onerror = () => {
+        if (stopped) return;
+        setConnectionStatus("error");
+      };
+
+      ws.onclose = () => {
+        if (stopped) return;
+        setConnectionStatus("disconnected");
+        setIsBotTyping(false);
+        const attempt = reconnectAttemptRef.current;
+        const delay = Math.min(1000 * Math.pow(2, attempt), 15000);
+        reconnectAttemptRef.current = attempt + 1;
+        reconnectTimerRef.current = window.setTimeout(connect, delay);
+      };
+    };
+
+    connect();
+
+    return () => {
+      stopped = true;
+      clearReconnectTimer();
+      closeSocket();
+    };
+  }, [accessToken]);
 
   // =============================
   // 🔹 Send message handler
@@ -70,36 +196,37 @@ const TestChatPage: React.FC = () => {
       id: Date.now(),
       sender: "user",
       text: input,
-      timestamp: new Date().toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      }),
+      timestamp: formatTodayLabel(),
     };
 
     setMessages((prev) => [...prev, newMessage]);
-    setInput("");
+    setIsBotTyping(true);
 
-    // Simulated bot reply (replace with API call)
-    setTimeout(() => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ message: input }));
+    } else {
+      setIsBotTyping(false);
       setMessages((prev) => [
         ...prev,
         {
           id: Date.now() + 1,
           sender: "bot",
-          text: "This is a test AI reply — your backend integration will respond here.",
-          timestamp: new Date().toLocaleDateString("en-US", {
-            month: "long",
-            day: "numeric",
-            year: "numeric",
-          }),
+          text:
+            connectionStatus === "connecting"
+              ? "Connecting to AI… please try again in a moment."
+              : "AI connection is not available right now. Please refresh or check your login/token.",
+          timestamp: formatTodayLabel(),
         },
       ]);
-    }, 1000);
+    }
+
+    setInput("");
   };
 
   const handleReset = () => {
     setMessages([]);
+    setIsBotTyping(false);
   };
 
   // =============================
@@ -113,6 +240,10 @@ const TestChatPage: React.FC = () => {
           <p className="text-gray-400 text-sm">
             Use this window to see how your AI responds to messages.
             Anything tested here uses the same tone, knowledge, and settings.
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            Status: {connectionStatus}
+            {!accessToken ? " (no token found)" : ""}
           </p>
         </div>
         <button
@@ -149,6 +280,16 @@ const TestChatPage: React.FC = () => {
                 </div>
               </div>
             ))}
+
+            {isBotTyping && (
+              <div className="flex justify-start w-full">
+                <div className="px-4 py-2 rounded-2xl bg-black text-gray-300 text-sm">
+                  Typing…
+                </div>
+              </div>
+            )}
+
+            <div ref={scrollEndRef} />
           </div>
 
           {/* Input area */}
@@ -163,6 +304,7 @@ const TestChatPage: React.FC = () => {
             />
             <button
               onClick={handleSend}
+              disabled={!input.trim()}
               className="bg-blue-600 hover:bg-blue-700 p-3 rounded-full transition active:scale-95"
             >
               <Send className="w-5 h-5" />

@@ -1,7 +1,7 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { useEffect, useRef, useState, FormEvent } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 type Platform = "facebook" | "whatsapp" | "instagram" | "telegram" | "sms" | string;
 
@@ -26,6 +26,7 @@ interface Conversation {
   clientId: string;
   roomId: number | string;
   messages: ChatMessage[];
+  historyFetched?: boolean;
 }
 
 export default function ChatPage() {
@@ -43,6 +44,9 @@ export default function ChatPage() {
   const selectedConversation = selectedConversationId
     ? conversations[selectedConversationId] ?? null
     : null;
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [_, forceUpdate] = useState(0);
 
   /* ─────────────────────────────
      1) WebSocket connection
@@ -68,65 +72,128 @@ export default function ChatPage() {
         // 1) Connection established – grab profiles / initial room
         if (data.type === "connection_established") {
           if (Array.isArray(data.profiles)) {
-            const profs: Profile[] = data.profiles.map((p: any) => ({
-              platform: p.platform,
-              profile_id: String(p.profile_id),
-            }));
+            const profs: Profile[] = [];
+            const newConversations: Record<string, Conversation> = {};
+
+            data.profiles.forEach((p: any) => {
+              // Add profile
+              profs.push({
+                platform: p.platform,
+                profile_id: String(p.profile_id),
+              });
+
+              // Process rooms for this profile
+              if (Array.isArray(p.room)) {
+                p.room.forEach((r: any) => {
+                  const platform = p.platform;
+                  const clientId = String(r.client_id).trim();
+                  const roomId = r.room_id;
+                  const convId = `${platform}:${clientId}`;
+
+                  newConversations[convId] = {
+                    id: convId,
+                    platform,
+                    clientId,
+                    roomId,
+                    messages: [],
+                    historyFetched: false,
+                  };
+                });
+              }
+            });
+
             setProfiles(profs);
+
+            // Safe merge: only add if not exists
+            setConversations((prev) => {
+              const next = { ...prev };
+              Object.values(newConversations).forEach((nc) => {
+                if (!next[nc.id]) {
+                  next[nc.id] = nc;
+                }
+              });
+              return next;
+            });
 
             // Default selected platform
             if (!selectedPlatform && profs.length > 0) {
               setSelectedPlatform(profs[0].platform);
             }
           }
-
-          // If your backend sends initial rooms/messages, you can parse them here too
           return;
         }
 
         // 2) New message – update conversation state
-        if (data.type === "new_message") {
+        if (data.type?.trim() === "new_message") {
           const platform: Platform = data.platform;
-          const clientId: string = String(data.client_id);
+          const clientId: string = String(data.client_id).trim();
           const roomId: number | string = data.room_id ?? "unknown";
-          const text: string = data.message;
+          const rawText: string = data.message;
           const direction: "incoming" | "outgoing" =
             data.message_type === "outgoing" ? "outgoing" : "incoming";
-          const timestamp: string = data.timestamp ?? new Date().toISOString();
+
+          let timestamp = data.timestamp ?? new Date().toISOString();
 
           const convId = `${platform}:${clientId}`;
+          console.log("[WS DEBUG] Processing 'new_message'", {
+            receivedType: data.type,
+            convId,
+            platform,
+            clientId,
+            timestamp,
+            direction
+          });
 
           setConversations((prev) => {
             const existing = prev[convId];
 
-            const msg: ChatMessage = {
-              id: `${timestamp}-${direction}`,
-              platform,
-              clientId,
-              roomId,
-              text,
-              direction,
-              timestamp,
-            };
+            if (!existing) {
+              console.warn("[WS DEBUG] Conversation NOT found, creating new one:", convId);
+              const newMsg: ChatMessage = {
+                id: `${timestamp}-${direction}-${Math.random()}`,
+                platform,
+                clientId,
+                roomId,
+                text: rawText,
+                direction,
+                timestamp,
+              };
 
-            const updated: Conversation = existing
-              ? {
-                  ...existing,
-                  messages: [...existing.messages, msg],
-                }
-              : {
+              return {
+                ...prev,
+                [convId]: {
                   id: convId,
                   platform,
                   clientId,
                   roomId,
-                  messages: [msg],
-                };
+                  messages: [newMsg],
+                  historyFetched: false
+                }
+              };
+            }
+
+            console.log("[WS DEBUG] Conversation FOUND. Appending message.");
+            const msg: ChatMessage = {
+              id: `${timestamp}-${direction}-${Math.random()}`,
+              platform,
+              clientId,
+              roomId,
+              text: rawText,
+              direction,
+              timestamp,
+            };
 
             return {
               ...prev,
-              [convId]: updated,
+              [convId]: {
+                ...existing,
+                messages: [...existing.messages, msg],
+              },
             };
           });
+
+          // Hack: Force UI re-render
+          forceUpdate((n) => n + 1);
 
           // If nothing selected yet, auto-select this conversation & platform
           setSelectedPlatform((prevPlat) => prevPlat ?? platform);
@@ -146,15 +213,79 @@ export default function ChatPage() {
     };
 
     return () => {
-      ws.close();
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          ws.close();
+      }
       wsRef.current = null;
     };
   }, [accessToken, selectedPlatform]);
 
   /* ─────────────────────────────
+     1.5) Fetch History
+  ───────────────────────────── */
+  useEffect(() => {
+    const fetchHistory = async () => {
+      if (!selectedConversation || selectedConversation.historyFetched || !accessToken) return;
+
+      try {
+        // Mark as fetched immediately to prevent duplicate calls
+        setConversations((prev) => {
+          const conv = prev[selectedConversation.id];
+          if (!conv) return prev;
+          return {
+            ...prev,
+            [selectedConversation.id]: {
+              ...conv,
+              historyFetched: true,
+            },
+          };
+        });
+
+        const res = await fetch(
+          `https://ape-in-eft.ngrok-free.app/api/chat/old-message/${selectedConversation.platform}/${selectedConversation.roomId}/`,
+          {
+             headers: { Authorization: `Bearer ${accessToken}` }
+          }
+        );
+
+        if (!res.ok) throw new Error("Failed to fetch history");
+
+        const data = await res.json();
+
+        if (Array.isArray(data)) {
+          const historyMessages: ChatMessage[] = data.map((msg: any) => ({
+            id: String(msg.id),
+            platform: selectedConversation.platform,
+            clientId: selectedConversation.clientId,
+            roomId: msg.room,
+            text: msg.text,
+            direction: msg.type === "outgoing" ? "outgoing" : "incoming",
+            timestamp: msg.timestamp,
+          }));
+
+          setConversations((prev) => {
+             const conv = prev[selectedConversation.id];
+             if (!conv) return prev;
+             const combined = [...historyMessages, ...conv.messages];
+             return {
+               ...prev,
+               [selectedConversation.id]: {
+                 ...conv,
+                 messages: combined,
+               },
+             };
+          });
+        }
+      } catch (err) {
+        console.error("Error fetching history:", err);
+      }
+    };
+
+    fetchHistory();
+  }, [selectedConversationId, accessToken, selectedConversation?.historyFetched]);
+
+  /* ─────────────────────────────
      2) Sending a message
-     (you might need to adapt the payload
-      to match your backend spec)
   ───────────────────────────── */
   const handleSend = (e: FormEvent) => {
     e.preventDefault();
@@ -173,7 +304,7 @@ export default function ChatPage() {
     // Optimistic UI update (outgoing)
     const now = new Date().toISOString();
     const msg: ChatMessage = {
-      id: `${now}-outgoing`,
+      id: `${now}-outgoing-${Math.random()}`,
       platform: selectedConversation.platform,
       clientId: selectedConversation.clientId,
       roomId: selectedConversation.roomId,
@@ -191,6 +322,7 @@ export default function ChatPage() {
     }));
 
     setPendingMessage("");
+    forceUpdate((n) => n + 1);
   };
 
   /* ─────────────────────────────
@@ -199,15 +331,34 @@ export default function ChatPage() {
   const conversationList = Object.values(conversations).sort((a, b) => {
     const lastA = a.messages[a.messages.length - 1];
     const lastB = b.messages[b.messages.length - 1];
-    return (
-      new Date(lastB?.timestamp ?? 0).getTime() -
-      new Date(lastA?.timestamp ?? 0).getTime()
-    );
+
+    const tA = lastA ? new Date(lastA.timestamp).getTime() : 0;
+    const tB = lastB ? new Date(lastB.timestamp).getTime() : 0;
+
+    return (isNaN(tB) ? 0 : tB) - (isNaN(tA) ? 0 : tA);
   });
 
   const filteredConversations = selectedPlatform
     ? conversationList.filter((c) => c.platform === selectedPlatform)
     : conversationList;
+
+  // Re-sort messages for the selected conversation (history + live)
+  const displayMessages = selectedConversation
+    ? [...selectedConversation.messages].sort((a, b) => {
+        const timeA = new Date(a.timestamp).getTime();
+        const timeB = new Date(b.timestamp).getTime();
+
+        const valA = isNaN(timeA) ? 0 : timeA;
+        const valB = isNaN(timeB) ? 0 : timeB;
+
+        return valA - valB;
+      })
+    : [];
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [displayMessages]);
 
   /* ─────────────────────────────
      4) Rendering
@@ -267,7 +418,10 @@ export default function ChatPage() {
 
           {filteredConversations.map((c) => {
             const isActive = c.id === selectedConversationId;
-            const lastMsg = c.messages[c.messages.length - 1];
+            const sorted = [...c.messages].sort(
+              (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+            );
+            const lastMsg = sorted[sorted.length - 1];
 
             return (
               <button
@@ -340,34 +494,37 @@ export default function ChatPage() {
         {/* Messages area */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2">
           {selectedConversation ? (
-            selectedConversation.messages.map((m) => {
-              const isOutgoing = m.direction === "outgoing";
-              return (
-                <div
-                  key={m.id}
-                  className={`flex w-full ${
-                    isOutgoing ? "justify-end" : "justify-start"
-                  }`}
-                >
+            <>
+              {displayMessages.map((m) => {
+                const isOutgoing = m.direction === "outgoing";
+                return (
                   <div
-                    className={`max-w-[70%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap
-                    ${
-                      isOutgoing
-                        ? "bg-[#0b57d0] text-white rounded-br-none"
-                        : "bg-[#111521] text-gray-100 rounded-bl-none"
+                    key={m.id}
+                    className={`flex w-full ${
+                      isOutgoing ? "justify-end" : "justify-start"
                     }`}
                   >
-                    {m.text}
-                    <div className="mt-1 text-[10px] text-gray-300 text-right">
-                      {new Date(m.timestamp).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                    <div
+                      className={`max-w-[70%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap
+                      ${
+                        isOutgoing
+                          ? "bg-[#0b57d0] text-white rounded-br-none"
+                          : "bg-[#111521] text-gray-100 rounded-bl-none"
+                      }`}
+                    >
+                      {m.text}
+                      <div className="mt-1 text-[10px] text-gray-300 text-right">
+                        {new Date(m.timestamp).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </>
           ) : (
             <div className="h-full flex items-center justify-center text-gray-500 text-sm">
               No conversation selected.
