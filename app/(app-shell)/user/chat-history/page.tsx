@@ -45,6 +45,9 @@ export default function ChatPage() {
     ? conversations[selectedConversationId] ?? null
     : null;
 
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [_, forceUpdate] = useState(0);
+
   /* ─────────────────────────────
      1) WebSocket connection
   ───────────────────────────── */
@@ -92,7 +95,7 @@ export default function ChatPage() {
                     platform,
                     clientId,
                     roomId,
-                    messages: [], // Will be filled when clicked via fetchHistory
+                    messages: [],
                     historyFetched: false,
                   };
                 });
@@ -100,60 +103,97 @@ export default function ChatPage() {
             });
 
             setProfiles(profs);
-            setConversations((prev) => ({ ...prev, ...newConversations }));
+
+            // Safe merge: only add if not exists
+            setConversations((prev) => {
+              const next = { ...prev };
+              Object.values(newConversations).forEach((nc) => {
+                if (!next[nc.id]) {
+                  next[nc.id] = nc;
+                }
+              });
+              return next;
+            });
 
             // Default selected platform
             if (!selectedPlatform && profs.length > 0) {
               setSelectedPlatform(profs[0].platform);
             }
           }
-
           return;
         }
 
         // 2) New message – update conversation state
-        if (data.type === "new_message") {
+        if (data.type?.trim() === "new_message") {
           const platform: Platform = data.platform;
-          const clientId: string = String(data.client_id);
+          const clientId: string = String(data.client_id).trim();
           const roomId: number | string = data.room_id ?? "unknown";
-          const text: string = data.message;
+          const rawText: string = data.message;
           const direction: "incoming" | "outgoing" =
             data.message_type === "outgoing" ? "outgoing" : "incoming";
-          const timestamp: string = data.timestamp ?? new Date().toISOString();
+
+          let timestamp = data.timestamp ?? new Date().toISOString();
 
           const convId = `${platform}:${clientId}`;
+          console.log("[WS DEBUG] Processing 'new_message'", {
+            receivedType: data.type,
+            convId,
+            platform,
+            clientId,
+            timestamp,
+            direction
+          });
 
           setConversations((prev) => {
             const existing = prev[convId];
 
-            const msg: ChatMessage = {
-              id: `${timestamp}-${direction}`,
-              platform,
-              clientId,
-              roomId,
-              text,
-              direction,
-              timestamp,
-            };
+            if (!existing) {
+              console.warn("[WS DEBUG] Conversation NOT found, creating new one:", convId);
+              const newMsg: ChatMessage = {
+                id: `${timestamp}-${direction}-${Math.random()}`,
+                platform,
+                clientId,
+                roomId,
+                text: rawText,
+                direction,
+                timestamp,
+              };
 
-            const updated: Conversation = existing
-              ? {
-                  ...existing,
-                  messages: [...existing.messages, msg],
-                }
-              : {
+              return {
+                ...prev,
+                [convId]: {
                   id: convId,
                   platform,
                   clientId,
                   roomId,
-                  messages: [msg],
-                };
+                  messages: [newMsg],
+                  historyFetched: false
+                }
+              };
+            }
+
+            console.log("[WS DEBUG] Conversation FOUND. Appending message.");
+            const msg: ChatMessage = {
+              id: `${timestamp}-${direction}-${Math.random()}`,
+              platform,
+              clientId,
+              roomId,
+              text: rawText,
+              direction,
+              timestamp,
+            };
 
             return {
               ...prev,
-              [convId]: updated,
+              [convId]: {
+                ...existing,
+                messages: [...existing.messages, msg],
+              },
             };
           });
+
+          // Hack: Force UI re-render
+          forceUpdate((n) => n + 1);
 
           // If nothing selected yet, auto-select this conversation & platform
           setSelectedPlatform((prevPlat) => prevPlat ?? platform);
@@ -173,7 +213,9 @@ export default function ChatPage() {
     };
 
     return () => {
-      ws.close();
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          ws.close();
+      }
       wsRef.current = null;
     };
   }, [accessToken, selectedPlatform]);
@@ -202,9 +244,7 @@ export default function ChatPage() {
         const res = await fetch(
           `https://ape-in-eft.ngrok-free.app/api/chat/old-message/${selectedConversation.platform}/${selectedConversation.roomId}/`,
           {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
+             headers: { Authorization: `Bearer ${accessToken}` }
           }
         );
 
@@ -223,21 +263,10 @@ export default function ChatPage() {
             timestamp: msg.timestamp,
           }));
 
-          // Merge history with existing messages
-          // We put history BEFORE existing messages, but need to deduplicate based on timestamp or ID if possible.
-          // Since existing messages use generated IDs, let's just prepend and sort by timestamp.
-
           setConversations((prev) => {
              const conv = prev[selectedConversation.id];
              if (!conv) return prev;
-
-             // Simple merge: history + existing (filtering out any that might be in history? unlikely for WS messages unless they persisted)
-             // We'll rely on sorting for display.
              const combined = [...historyMessages, ...conv.messages];
-
-             // Optional: Deduplicate by exact timestamp + text + direction if needed, but for now just raw merge
-             // (Assuming WS messages are "new" and generated after history fetch or just now)
-
              return {
                ...prev,
                [selectedConversation.id]: {
@@ -249,17 +278,14 @@ export default function ChatPage() {
         }
       } catch (err) {
         console.error("Error fetching history:", err);
-        // If failed, maybe allow retry? For now, we leave historyFetched=true to stop infinite loops.
       }
     };
 
     fetchHistory();
-  }, [selectedConversationId, accessToken, selectedConversation?.historyFetched]); // Depend on ID to trigger switch
+  }, [selectedConversationId, accessToken, selectedConversation?.historyFetched]);
 
   /* ─────────────────────────────
      2) Sending a message
-     (you might need to adapt the payload
-      to match your backend spec)
   ───────────────────────────── */
   const handleSend = (e: FormEvent) => {
     e.preventDefault();
@@ -278,7 +304,7 @@ export default function ChatPage() {
     // Optimistic UI update (outgoing)
     const now = new Date().toISOString();
     const msg: ChatMessage = {
-      id: `${now}-outgoing`,
+      id: `${now}-outgoing-${Math.random()}`,
       platform: selectedConversation.platform,
       clientId: selectedConversation.clientId,
       roomId: selectedConversation.roomId,
@@ -296,6 +322,7 @@ export default function ChatPage() {
     }));
 
     setPendingMessage("");
+    forceUpdate((n) => n + 1);
   };
 
   /* ─────────────────────────────
@@ -304,10 +331,11 @@ export default function ChatPage() {
   const conversationList = Object.values(conversations).sort((a, b) => {
     const lastA = a.messages[a.messages.length - 1];
     const lastB = b.messages[b.messages.length - 1];
-    return (
-      new Date(lastB?.timestamp ?? 0).getTime() -
-      new Date(lastA?.timestamp ?? 0).getTime()
-    );
+
+    const tA = lastA ? new Date(lastA.timestamp).getTime() : 0;
+    const tB = lastB ? new Date(lastB.timestamp).getTime() : 0;
+
+    return (isNaN(tB) ? 0 : tB) - (isNaN(tA) ? 0 : tA);
   });
 
   const filteredConversations = selectedPlatform
@@ -316,10 +344,21 @@ export default function ChatPage() {
 
   // Re-sort messages for the selected conversation (history + live)
   const displayMessages = selectedConversation
-    ? [...selectedConversation.messages].sort(
-        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-      )
+    ? [...selectedConversation.messages].sort((a, b) => {
+        const timeA = new Date(a.timestamp).getTime();
+        const timeB = new Date(b.timestamp).getTime();
+
+        const valA = isNaN(timeA) ? 0 : timeA;
+        const valB = isNaN(timeB) ? 0 : timeB;
+
+        return valA - valB;
+      })
     : [];
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [displayMessages]);
 
   /* ─────────────────────────────
      4) Rendering
@@ -379,7 +418,6 @@ export default function ChatPage() {
 
           {filteredConversations.map((c) => {
             const isActive = c.id === selectedConversationId;
-            // Sorting to find LAST message for preview
             const sorted = [...c.messages].sort(
               (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
             );
@@ -456,34 +494,37 @@ export default function ChatPage() {
         {/* Messages area */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2">
           {selectedConversation ? (
-            displayMessages.map((m) => {
-              const isOutgoing = m.direction === "outgoing";
-              return (
-                <div
-                  key={m.id}
-                  className={`flex w-full ${
-                    isOutgoing ? "justify-end" : "justify-start"
-                  }`}
-                >
+            <>
+              {displayMessages.map((m) => {
+                const isOutgoing = m.direction === "outgoing";
+                return (
                   <div
-                    className={`max-w-[70%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap
-                    ${
-                      isOutgoing
-                        ? "bg-[#0b57d0] text-white rounded-br-none"
-                        : "bg-[#111521] text-gray-100 rounded-bl-none"
+                    key={m.id}
+                    className={`flex w-full ${
+                      isOutgoing ? "justify-end" : "justify-start"
                     }`}
                   >
-                    {m.text}
-                    <div className="mt-1 text-[10px] text-gray-300 text-right">
-                      {new Date(m.timestamp).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                    <div
+                      className={`max-w-[70%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap
+                      ${
+                        isOutgoing
+                          ? "bg-[#0b57d0] text-white rounded-br-none"
+                          : "bg-[#111521] text-gray-100 rounded-bl-none"
+                      }`}
+                    >
+                      {m.text}
+                      <div className="mt-1 text-[10px] text-gray-300 text-right">
+                        {new Date(m.timestamp).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </>
           ) : (
             <div className="h-full flex items-center justify-center text-gray-500 text-sm">
               No conversation selected.

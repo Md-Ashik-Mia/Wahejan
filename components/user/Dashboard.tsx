@@ -2,6 +2,7 @@
 
 import { userApi } from "@/lib/http/client";
 import { useQuery } from "@tanstack/react-query";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AiOutlineMessage } from "react-icons/ai";
 import { FaRegCalendarPlus } from "react-icons/fa";
 import { FaMoneyBillWave } from "react-icons/fa6";
@@ -48,6 +49,33 @@ interface DashboardData {
     remaining: number;
   };
   channel_status: ChannelStatus;
+}
+
+type AlertMessage = {
+  id: number;
+  title: string;
+  subtitle: string;
+  time: string;
+  type: string;
+  is_read: boolean;
+};
+
+const ALERTS_WS_BASE = "wss://ape-in-eft.ngrok-free.app/ws/alerts/";
+
+function normalizeAlertMessage(raw: unknown): AlertMessage | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+
+  const id = typeof r.id === "number" ? r.id : Number(r.id);
+  if (!Number.isFinite(id)) return null;
+
+  const title = typeof r.title === "string" ? r.title : "";
+  const subtitle = typeof r.subtitle === "string" ? r.subtitle : "";
+  const time = typeof r.time === "string" ? r.time : "";
+  const type = typeof r.type === "string" ? r.type : "";
+  const is_read = typeof r.is_read === "boolean" ? r.is_read : false;
+
+  return { id, title, subtitle, time, type, is_read };
 }
 
 // Map channel keys to display names
@@ -113,6 +141,99 @@ function Card({
 }
 
 export default function Dashboard() {
+  const [alerts, setAlerts] = useState<AlertMessage[]>([]);
+  const [alertsStatus, setAlertsStatus] = useState<
+    "connecting" | "connected" | "disconnected" | "error"
+  >("disconnected");
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const reconnectAttemptRef = useRef(0);
+
+  const unreadCount = useMemo(
+    () => alerts.reduce((acc, a) => acc + (a.is_read ? 0 : 1), 0),
+    [alerts]
+  );
+
+  useEffect(() => {
+    let stopped = false;
+
+    const clearReconnectTimer = () => {
+      if (reconnectTimerRef.current != null) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+    };
+
+    const closeSocket = () => {
+      const ws = wsRef.current;
+      wsRef.current = null;
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        ws.close();
+      }
+    };
+
+    const connect = () => {
+      clearReconnectTimer();
+      closeSocket();
+
+      const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+      if (!token) {
+        setAlertsStatus("error");
+        return;
+      }
+
+      setAlertsStatus("connecting");
+      const wsUrl = `${ALERTS_WS_BASE}?token=${encodeURIComponent(token)}`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (stopped) return;
+        reconnectAttemptRef.current = 0;
+        setAlertsStatus("connected");
+      };
+
+      ws.onmessage = (ev) => {
+        if (stopped) return;
+        try {
+          const parsed = JSON.parse(String(ev.data));
+          const msg = normalizeAlertMessage(parsed);
+          if (!msg) return;
+
+          setAlerts((prev) => {
+            const exists = prev.some((a) => a.id === msg.id);
+            const next = exists ? prev.map((a) => (a.id === msg.id ? msg : a)) : [msg, ...prev];
+            return next.slice(0, 50);
+          });
+        } catch {
+          // ignore malformed messages
+        }
+      };
+
+      ws.onerror = () => {
+        if (stopped) return;
+        setAlertsStatus("error");
+      };
+
+      ws.onclose = () => {
+        if (stopped) return;
+        setAlertsStatus("disconnected");
+        const attempt = reconnectAttemptRef.current;
+        const delay = Math.min(1000 * Math.pow(2, attempt), 15000);
+        reconnectAttemptRef.current = attempt + 1;
+        reconnectTimerRef.current = window.setTimeout(connect, delay);
+      };
+    };
+
+    connect();
+
+    return () => {
+      stopped = true;
+      clearReconnectTimer();
+      closeSocket();
+    };
+  }, []);
+
   const { data, isLoading, isError } = useQuery<DashboardData>({
     queryKey: ["user-dashboard"],
     queryFn: async () => {
@@ -275,12 +396,46 @@ export default function Dashboard() {
       <section className="bg-[#272727] border border-white/10 rounded-xl overflow-hidden">
         <div className="flex items-center justify-between px-4 py-2 bg-[#272727]">
           <div className="font-medium">Notifications/Alerts</div>
-          <Badge>All systems normal</Badge>
+          <Badge tone={alertsStatus === "connected" ? "green" : alertsStatus === "connecting" ? "yellow" : "red"}>
+            {alertsStatus === "connected"
+              ? unreadCount
+                ? `${unreadCount} new`
+                : "Connected"
+              : alertsStatus === "connecting"
+              ? "Connecting"
+              : "Disconnected"}
+          </Badge>
         </div>
-        <ul className="px-4 py-3 text-sm text-gray-300 list-disc list-inside space-y-1">
-          {/* TODO: Integrate socket for real-time notifications */}
-          <li>System online and operational.</li>
-          <li>Waiting for real-time updates...</li>
+        <ul className="px-4 py-3 text-sm text-gray-300 space-y-2">
+          {alerts.length === 0 ? (
+            <li className="text-gray-400">
+              {alertsStatus === "connected"
+                ? "Waiting for real-time updates..."
+                : "Connect to receive alerts."}
+            </li>
+          ) : (
+            alerts.map((a) => {
+              const timeLabel = a.time ? new Date(a.time).toLocaleString() : "";
+              return (
+                <li key={a.id} className="border-b border-white/10 pb-2 last:border-b-0 last:pb-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium text-gray-100 truncate">{a.title || "Alert"}</div>
+                      {a.subtitle ? (
+                        <div className="text-sm text-gray-300 mt-0.5">{a.subtitle}</div>
+                      ) : null}
+                      {timeLabel ? (
+                        <div className="text-xs text-gray-500 mt-1">{timeLabel}</div>
+                      ) : null}
+                    </div>
+                    <Badge tone={a.type === "error" ? "red" : a.type === "warning" ? "yellow" : "default"}>
+                      {a.type || "info"}
+                    </Badge>
+                  </div>
+                </li>
+              );
+            })
+          )}
         </ul>
       </section>
     </div>

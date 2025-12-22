@@ -82,7 +82,7 @@
 
 
 // lib/http/client.ts
-import axios, { type InternalAxiosRequestConfig } from "axios";
+import axios, { AxiosHeaders, type InternalAxiosRequestConfig } from "axios";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL!;
 
@@ -96,7 +96,13 @@ function attachAuth(
   if (typeof window !== "undefined") {
     const token = localStorage.getItem("access_token"); // set after login
     if (token) {
-      (config.headers as any).Authorization = `Bearer ${token}`;
+      const headers = config.headers;
+      if (headers instanceof AxiosHeaders) {
+        headers.set("Authorization", `Bearer ${token}`);
+      } else {
+        (headers as Record<string, string | undefined>)["Authorization"] =
+          `Bearer ${token}`;
+      }
     }
   }
   return config;
@@ -114,6 +120,9 @@ export const api = axios.create({
 export const userApi = axios.create({
   baseURL: BASE_URL,
 });
+
+// Alias (some pages/imports expect this exact name)
+export const userapi = userApi;
 
 /** Admin API */
 export const adminApi = axios.create({
