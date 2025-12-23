@@ -1,5 +1,76 @@
+"use client";
+
+import { userapi } from "@/lib/http/client";
+import axios, { type AxiosResponse } from "axios";
 import Link from "next/link";
-import React from 'react';
+import React, { useCallback, useEffect, useState } from "react";
+
+type UnknownRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null;
+}
+
+type ActivityLogItem = {
+  id: number;
+  activity_type: string;
+  title: string;
+  description: string;
+  icon: string;
+  timestamp: string;
+  model_name: string;
+};
+
+function normalizeActivityLogItem(raw: unknown): ActivityLogItem {
+  const r: UnknownRecord = isRecord(raw) ? raw : {};
+  return {
+    id: typeof r.id === "number" ? r.id : 0,
+    activity_type: typeof r.activity_type === "string" ? r.activity_type : "",
+    title: typeof r.title === "string" ? r.title : "",
+    description: typeof r.description === "string" ? r.description : "",
+    icon: typeof r.icon === "string" ? r.icon : "",
+    timestamp: typeof r.timestamp === "string" ? r.timestamp : "",
+    model_name: typeof r.model_name === "string" ? r.model_name : "",
+  };
+}
+
+function extractList(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) return payload;
+  if (!isRecord(payload)) return [];
+
+  const candidates = [payload.results, payload.data, payload.list];
+  for (const c of candidates) {
+    if (Array.isArray(c)) return c;
+  }
+  return [];
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data;
+    if (isRecord(data) && typeof data.detail === "string" && data.detail.trim()) {
+      return data.detail;
+    }
+    if (typeof error.message === "string" && error.message.trim()) return error.message;
+    return fallback;
+  }
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return fallback;
+}
+
+function formatActivityTimestamp(value: string): string {
+  const t = Date.parse(value);
+  if (!Number.isFinite(t)) return value || "—";
+  return new Date(t).toLocaleString();
+}
+
+function activityEmoji(icon: string, activityType: string): string {
+  const v = `${icon} ${activityType}`.toLowerCase();
+  if (v.includes("delete") || v.includes("remove")) return "🗑️";
+  if (v.includes("create") || v.includes("add") || v.includes("new")) return "➕";
+  if (v.includes("edit") || v.includes("update") || v.includes("change")) return "✏️";
+  return "🔹";
+}
 
 const AIKnowledgeBase: React.FC = () => {
   // Fake Data
@@ -14,12 +85,60 @@ const AIKnowledgeBase: React.FC = () => {
     { name: 'FAQs', items: 14, icon: '❓' }
   ];
 
-  const logs = [
-    { title: 'Price list updated', desc: 'Haircut price changed from €12 to €15', time: 'Today, 10:24 AM' },
-    { title: 'New FAQ added', desc: '“What payment methods do you accept?”', time: 'Yesterday, 3:45 PM' },
-    { title: 'Working hours updated', desc: 'Extended Saturday hours', time: 'Oct 21, 2023' },
-    { title: 'Service removed', desc: '“Beard trimming” service deleted', time: 'Oct 18, 2023' }
-  ];
+  const [activityLogs, setActivityLogs] = useState<ActivityLogItem[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState<string | null>(null);
+
+  const fetchActivityLogs = useCallback(async () => {
+    setActivityLoading(true);
+    setActivityError(null);
+
+    const candidates = ["/api/log/", "/api/log", "/log/", "/log"]; // supports backend variations
+    let lastError: unknown = null;
+
+    try {
+      let res: AxiosResponse<unknown> | null = null;
+
+      for (const endpoint of candidates) {
+        try {
+          res = await userapi.get(endpoint);
+          break;
+        } catch (e: unknown) {
+          lastError = e;
+          // If it's not a 404, don't keep trying alternate paths.
+          if (axios.isAxiosError(e) && e.response && e.response.status !== 404) {
+            throw e;
+          }
+        }
+      }
+
+      if (!res) {
+        throw lastError ?? new Error("Failed to load activity logs");
+      }
+
+      const payload = res.data;
+      const list = extractList(payload);
+
+      const normalized = list
+        .map(normalizeActivityLogItem)
+        .filter((l: ActivityLogItem) => Boolean(l.id) && (Boolean(l.title) || Boolean(l.description)))
+        .sort((a: ActivityLogItem, b: ActivityLogItem) => {
+          const at = a.timestamp ? Date.parse(a.timestamp) : 0;
+          const bt = b.timestamp ? Date.parse(b.timestamp) : 0;
+          return bt - at;
+        });
+
+      setActivityLogs(normalized);
+    } catch (e: unknown) {
+      setActivityError(getErrorMessage(e, "Failed to load activity logs"));
+    } finally {
+      setActivityLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchActivityLogs();
+  }, [fetchActivityLogs]);
 
   return (
     <div className="min-h-screen bg-black text-white p-6 space-y-8">
@@ -85,13 +204,25 @@ const AIKnowledgeBase: React.FC = () => {
       <section>
         <h2 className="text-lg font-semibold bg-blue-600 px-4 py-2 rounded-t-lg">Activity Log</h2>
         <div className="bg-[#272727] p-6 rounded-b-lg space-y-4">
-          {logs.map((log, idx) => (
-            <div key={idx} className="border-b border-gray-700 pb-3">
-              <h4 className="font-semibold flex items-center gap-2">🔹 {log.title}</h4>
-              <p className="text-gray-300 text-sm">{log.desc}</p>
-              <p className="text-gray-500 text-xs">{log.time}</p>
-            </div>
-          ))}
+          {activityError ? (
+            <p className="text-sm text-red-400">{activityError}</p>
+          ) : activityLoading ? (
+            <p className="text-sm text-gray-400">Loading activity...</p>
+          ) : activityLogs.length === 0 ? (
+            <p className="text-sm text-gray-400">No activity yet.</p>
+          ) : (
+            activityLogs.map((log) => (
+              <div key={log.id} className="border-b border-gray-700 pb-3">
+                <h4 className="font-semibold flex items-center gap-2">
+                  {activityEmoji(log.icon, log.activity_type)} {log.title || log.model_name || "Activity"}
+                </h4>
+                {log.description ? (
+                  <p className="text-gray-300 text-sm">{log.description}</p>
+                ) : null}
+                <p className="text-gray-500 text-xs">{formatActivityTimestamp(log.timestamp)}</p>
+              </div>
+            ))
+          )}
         </div>
       </section>
 
