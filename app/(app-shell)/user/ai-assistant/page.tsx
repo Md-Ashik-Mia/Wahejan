@@ -184,10 +184,6 @@ function filenameFromPath(path: string): string {
   return parts[parts.length - 1] ?? clean;
 }
 
-function trainingFileDetailEndpoint(id: number) {
-  return `${withTrailingSlash(AI_TRAINING_FILES_ENDPOINT)}${id}/`;
-}
-
 const DAY_OPTIONS = [
   { code: "mon", label: "Monday" },
   { code: "tue", label: "Tuesday" },
@@ -917,7 +913,6 @@ const AIAssistantDashboard: React.FC = () => {
      Train AI – file upload
   ───────────────────────────────────── */
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [trainingUploading, setTrainingUploading] = useState(false);
   const [trainingError, setTrainingError] = useState<string | null>(null);
 
@@ -991,7 +986,6 @@ const AIAssistantDashboard: React.FC = () => {
         AI_TRAINING_FILES_ENDPOINT
       );
 
-      setUploadedFiles([]);
       if (fileInputRef.current) fileInputRef.current.value = "";
       await fetchTrainingFiles();
     } catch (e: unknown) {
@@ -1005,8 +999,11 @@ const AIAssistantDashboard: React.FC = () => {
     setTrainingFileDeletingId(id);
     setTrainingFilesError(null);
     try {
-      const detail = trainingFileDetailEndpoint(id);
-      await requestWithSlashFallback((ep) => userapi.delete(ep), detail);
+      // Backend expects DELETE /ai-training-files/ with JSON: { file_id: <id> }
+      await requestWithSlashFallback(
+        (ep) => userapi.delete(ep, { data: { file_id: id } }),
+        AI_TRAINING_FILES_ENDPOINT
+      );
       await fetchTrainingFiles();
     } catch (e: unknown) {
       setTrainingFilesError(getApiErrorMessage(e, "Failed to delete training file"));
@@ -1019,7 +1016,6 @@ const AIAssistantDashboard: React.FC = () => {
     const files = e.target.files;
     if (!files) return;
     const list = Array.from(files);
-    setUploadedFiles(list);
     void uploadTrainingFiles(list);
   };
 
@@ -1027,7 +1023,6 @@ const AIAssistantDashboard: React.FC = () => {
     e.preventDefault();
     const list = Array.from(e.dataTransfer.files ?? []).filter((f) => f.size > 0);
     if (!list.length) return;
-    setUploadedFiles(list);
     void uploadTrainingFiles(list);
   };
 
