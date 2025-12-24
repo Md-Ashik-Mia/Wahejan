@@ -1,6 +1,76 @@
 "use client";
-import React, { useState } from "react";
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { userapi } from "@/lib/http/client";
+import axios, { type AxiosResponse } from "axios";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+
+type UnknownRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null;
+}
+
+function toNumber(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+  }
+  return fallback;
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data;
+    if (isRecord(data) && typeof data.detail === "string" && data.detail.trim()) {
+      return data.detail;
+    }
+    if (typeof error.message === "string" && error.message.trim()) return error.message;
+    return fallback;
+  }
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return fallback;
+}
+
+type NormalizedAnalytics = {
+  message_count: {
+    total: number;
+    platforms: Record<string, number>;
+  };
+  booking_count: number;
+  total_revenue: number;
+  new_customers: number;
+  unanswered_messages: number;
+  channel_messages: Record<string, number>;
+};
+
+function normalizeApiAnalytics(raw: unknown): NormalizedAnalytics {
+  const r: UnknownRecord = isRecord(raw) ? raw : {};
+
+  const messageCount = isRecord(r.message_count) ? r.message_count : {};
+  const platforms = isRecord(messageCount.platforms) ? messageCount.platforms : {};
+
+  const channelMessages = isRecord(r.channel_messages) ? r.channel_messages : {};
+
+  return {
+    message_count: {
+      total: toNumber(messageCount.total, 0),
+      platforms: Object.fromEntries(
+        Object.entries(platforms).map(([k, v]) => [k.toLowerCase(), toNumber(v, 0)])
+      ),
+    },
+    booking_count: toNumber(r.booking_count, 0),
+    total_revenue: toNumber(r.total_revenue, 0),
+    new_customers: toNumber(r.new_customers, 0),
+    unanswered_messages: toNumber(r.unanswered_messages, 0),
+    channel_messages: Object.fromEntries(
+      Object.entries(channelMessages).map(([k, v]) => [k.toLowerCase(), toNumber(v, 0)])
+    ),
+  };
+}
+
+const TIME_RANGES = ["Today", "This Week", "This Month"] as const;
+type TimeRange = (typeof TIME_RANGES)[number];
 
 interface AnalyticsData {
   messagesReceived: number;
@@ -19,78 +89,228 @@ interface AnalyticsData {
   topQuestions: { question: string; count: number }[];
 }
 
-const fakeData: Record<string, Record<string, AnalyticsData>> = {
-  Today: {
-    WhatsApp: {
-      messagesReceived: 24,
-      appointmentsBooked: 4,
-      totalRevenue: 24,
-      newCustomers: 4,
-      unanswered: 4,
-      channelDistribution: [
-        { name: "WhatsApp", value: 45, color: "#FACC15" },
-        { name: "Facebook", value: 25, color: "#3B82F6" },
-        { name: "Instagram", value: 20, color: "#EC4899" },
-        { name: "Webchat", value: 10, color: "#10B981" },
-      ],
-      financial: {
-        totalPayments: 24580,
-        avgOrder: 142,
-        failedPayments: 3,
-        pendingPayments: 640,
-        growth: { payments: "+15%", avgOrder: "+8.2%", failed: "+1", pending: "-12%" },
-      },
-      topQuestions: [
-        { question: "What are your business hours?", count: 142 },
-        { question: "Do you offer refunds?", count: 98 },
-        { question: "How do I schedule an appointment?", count: 100 },
-        { question: "What payment methods do you accept?", count: 52 },
-        { question: "Where is your location?", count: 132 },
-      ],
-    },
-    Facebook: {
-      messagesReceived: 18,
-      appointmentsBooked: 2,
-      totalRevenue: 12,
-      newCustomers: 3,
-      unanswered: 2,
-      channelDistribution: [
-        { name: "WhatsApp", value: 20, color: "#FACC15" },
-        { name: "Facebook", value: 60, color: "#3B82F6" },
-        { name: "Instagram", value: 10, color: "#EC4899" },
-        { name: "Webchat", value: 10, color: "#10B981" },
-      ],
-      financial: {
-        totalPayments: 16500,
-        avgOrder: 108,
-        failedPayments: 2,
-        pendingPayments: 350,
-        growth: { payments: "+9%", avgOrder: "+3.2%", failed: "-1", pending: "-5%" },
-      },
-      topQuestions: [
-        { question: "Do you offer refunds?", count: 80 },
-        { question: "How do I schedule an appointment?", count: 60 },
-        { question: "What are your business hours?", count: 110 },
-      ],
-    },
-  },
+function normalizeQuestionLeaderboard(payload: unknown): Array<{ question: string; count: number }> {
+  const list = Array.isArray(payload) ? payload : [];
+  return list
+    .map((raw: unknown) => {
+      const r: UnknownRecord = isRecord(raw) ? raw : {};
+      const text = typeof r.text === "string" ? r.text.trim() : "";
+      const count = toNumber(r.count, 0);
+      return { question: text, count };
+    })
+    .filter((q) => Boolean(q.question));
+}
+
+const channels = ["All Channels", "WhatsApp", "Facebook", "Instagram"] as const;
+type ChannelFilter = (typeof channels)[number];
+
+const COLORS: Record<string, string> = {
+  WhatsApp: "#FACC15",
+  Facebook: "#3B82F6",
+  Instagram: "#EC4899",
 };
 
-const channels = ["WhatsApp", "Facebook", "Instagram", "Webchat"];
+const EMPTY_DATA: AnalyticsData = {
+  messagesReceived: 0,
+  appointmentsBooked: 0,
+  totalRevenue: 0,
+  newCustomers: 0,
+  unanswered: 0,
+  channelDistribution: channels
+    .filter((name) => name !== "All Channels")
+    .map((name) => ({ name, value: 0, color: COLORS[name] })),
+  financial: {
+    totalPayments: 0,
+    avgOrder: 0,
+    failedPayments: 0,
+    pendingPayments: 0,
+    growth: { payments: "—", avgOrder: "—", failed: "—", pending: "—" },
+  },
+  topQuestions: [],
+};
 
 const AnalyticsDashboard: React.FC = () => {
-  const [timeRange, setTimeRange] = useState<"Today" | "This Week" | "This Month">("Today");
-  const [channel, setChannel] = useState("WhatsApp");
-  const [data, setData] = useState<AnalyticsData>(fakeData.Today.WhatsApp);
+  const [timeRange, setTimeRange] = useState<TimeRange>("Today");
+  const [channel, setChannel] = useState<ChannelFilter>("All Channels");
+  const [data, setData] = useState<AnalyticsData>(EMPTY_DATA);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [topLoading, setTopLoading] = useState(false);
+  const [topError, setTopError] = useState<string | null>(null);
+
+  const timezone = useMemo(() => {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return typeof tz === "string" && tz.trim() ? tz : "Asia/Dhaka";
+  }, []);
+
+  const fetchAnalytics = useCallback(async (range: string, ch: ChannelFilter) => {
+    setLoading(true);
+    setError(null);
+
+    const timeMap: Record<string, string> = {
+      Today: "today",
+      "This Week": "this_week",
+      "This Month": "this_month",
+    };
+
+    const time = timeMap[range] ?? "this_year";
+    const channelParam = ch === "All Channels" ? "" : String(ch).trim().toLowerCase();
+
+    // NOTE: in some environments NEXT_PUBLIC_API_BASE_URL already ends with `/api`
+    // (see other pages like user/integrations). In that case endpoints must NOT
+    // start with `/api`, otherwise we hit `/api/api/...` and get 404.
+    const baseParams: Record<string, string> = {
+      time,
+      type: "all",
+      timezone,
+      ...(channelParam ? { channel: channelParam } : {}),
+    };
+
+    const candidates: Array<{ endpoint: string; params: Record<string, string> }> = [
+      // baseURL ends with `/api`
+      { endpoint: "/analytics/", params: baseParams },
+      { endpoint: "/analytics", params: baseParams },
+
+      // baseURL does NOT end with `/api`
+      { endpoint: "/api/analytics/", params: baseParams },
+      { endpoint: "/api/analytics", params: baseParams },
+
+      // fallback if backend doesn't support chosen time range
+      { endpoint: "/analytics/", params: { ...baseParams, time: "this_year" } },
+      { endpoint: "/api/analytics/", params: { ...baseParams, time: "this_year" } },
+    ];
+
+    let lastError: unknown = null;
+
+    try {
+      let res: AxiosResponse<unknown> | null = null;
+
+      for (const c of candidates) {
+        try {
+          // Backend expects no body for "all channels", but may accept a body for filtering.
+          // Some browsers strip GET bodies; we send BOTH query params + body when filtering.
+          if (!channelParam) {
+            res = await userapi.get(c.endpoint, { params: c.params });
+          } else {
+            res = await userapi.request({
+              url: c.endpoint,
+              method: "GET",
+              params: c.params,
+              data: { time: c.params.time, channel: channelParam },
+            });
+          }
+          break;
+        } catch (e: unknown) {
+          lastError = e;
+          if (axios.isAxiosError(e) && e.response && e.response.status !== 404) {
+            // still try fallbacks for 400/422/etc (common when params differ), but stop on 401
+            if (e.response.status === 401) throw e;
+          }
+        }
+      }
+
+      if (!res) throw lastError ?? new Error("Failed to load analytics");
+
+      const api = normalizeApiAnalytics(res.data);
+      const totalRevenue = api.total_revenue;
+      const appointmentsBooked = api.booking_count;
+      const avgOrder = appointmentsBooked > 0 ? totalRevenue / appointmentsBooked : 0;
+
+      const platforms = api.message_count.platforms;
+      const channelDistribution = channels.filter((n) => n !== "All Channels").map((name) => {
+        const key = name.toLowerCase();
+        const value = typeof platforms[key] === "number" ? platforms[key] : 0;
+        return { name, value, color: COLORS[name] };
+      });
+
+      setData((prev) => ({
+        ...prev,
+        messagesReceived: api.message_count.total,
+        appointmentsBooked,
+        totalRevenue,
+        newCustomers: api.new_customers,
+        unanswered: api.unanswered_messages,
+        channelDistribution,
+        financial: {
+          // API currently provides total_revenue; the rest are not present
+          totalPayments: totalRevenue,
+          avgOrder: Math.round(avgOrder * 100) / 100,
+          failedPayments: 0,
+          pendingPayments: 0,
+          growth: { payments: "—", avgOrder: "—", failed: "—", pending: "—" },
+        },
+      }));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, "Failed to load analytics"));
+      setData((prev) => ({ ...EMPTY_DATA, topQuestions: prev.topQuestions }));
+    } finally {
+      setLoading(false);
+    }
+  }, [timezone]);
+
+  const fetchTopQuestions = useCallback(async () => {
+    setTopLoading(true);
+    setTopError(null);
+
+    // NOTE: baseURL may already include `/api`, so prefer endpoints WITHOUT `/api` first.
+    const candidates = [
+      "/chat/question-leaderboard/",
+      "/chat/question-leaderboard",
+      "/api/chat/question-leaderboard/",
+      "/api/chat/question-leaderboard",
+    ];
+
+    let lastError: unknown = null;
+
+    try {
+      let res: AxiosResponse<unknown> | null = null;
+
+      for (const endpoint of candidates) {
+        try {
+          res = await userapi.get(endpoint);
+          break;
+        } catch (e: unknown) {
+          lastError = e;
+          if (axios.isAxiosError(e) && e.response && e.response.status !== 404) {
+            if (e.response.status === 401) throw e;
+          }
+        }
+      }
+
+      if (!res) throw lastError ?? new Error("Failed to load top questions");
+
+      const list = normalizeQuestionLeaderboard(res.data);
+      setData((prev) => ({ ...prev, topQuestions: list }));
+    } catch (e: unknown) {
+      setTopError(getErrorMessage(e, "Failed to load top questions"));
+      setData((prev) => ({ ...prev, topQuestions: [] }));
+    } finally {
+      setTopLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchAnalytics(timeRange, channel);
+  }, [fetchAnalytics, timeRange, channel]);
+
+  useEffect(() => {
+    void fetchTopQuestions();
+  }, [fetchTopQuestions]);
 
   const handleApplyFilters = () => {
-    const filtered = fakeData[timeRange]?.[channel];
-    if (filtered) setData(filtered);
+    void fetchAnalytics(timeRange, channel);
   };
 
   return (
     <div className="min-h-screen bg-black text-white p-6 space-y-8">
       <h1 className="text-2xl font-semibold">Business Analytics</h1>
+
+      {error ? (
+        <p className="text-sm text-red-400">{error}</p>
+      ) : loading ? (
+        <p className="text-sm text-gray-400">Loading analytics...</p>
+      ) : null}
 
       {/* Filters */}
       <div className="flex flex-wrap gap-4 items-end">
@@ -98,12 +318,15 @@ const AnalyticsDashboard: React.FC = () => {
           <p className="text-sm text-gray-400 mb-1">Time Range</p>
           <select
             value={timeRange}
-            onChange={(e) => setTimeRange(e.target.value as any)}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (TIME_RANGES.includes(v as TimeRange)) setTimeRange(v as TimeRange);
+            }}
             className="bg-[#272727]  text-white p-2 rounded"
           >
-            <option>Today</option>
-            <option>This Week</option>
-            <option>This Month</option>
+            {TIME_RANGES.map((r) => (
+              <option key={r}>{r}</option>
+            ))}
           </select>
         </div>
 
@@ -111,7 +334,7 @@ const AnalyticsDashboard: React.FC = () => {
           <p className="text-sm text-gray-400 mb-1">Channel</p>
           <select
             value={channel}
-            onChange={(e) => setChannel(e.target.value)}
+            onChange={(e) => setChannel(e.target.value as ChannelFilter)}
             className="bg-[#272727]  text-white p-2 rounded"
           >
             {channels.map((ch) => (
@@ -122,9 +345,10 @@ const AnalyticsDashboard: React.FC = () => {
 
         <button
           onClick={handleApplyFilters}
-          className="bg-blue-600 px-4 py-2 rounded h-fit"
+          className="bg-blue-600 px-4 py-2 rounded h-fit disabled:opacity-60"
+          disabled={loading}
         >
-          Apply Filters
+          {loading ? "Loading..." : "Apply Filters"}
         </button>
       </div>
 
@@ -208,12 +432,20 @@ const AnalyticsDashboard: React.FC = () => {
           <p className="text-sm text-gray-200">Most common queries</p>
         </div>
         <div className="bg-[#272727]  p-6 rounded-b-lg space-y-2">
-          {data.topQuestions.map((q, i) => (
-            <div key={i}>
-              <p className="text-white font-medium">{q.question}</p>
-              <p className="text-gray-400 text-sm">Asked {q.count} times</p>
-            </div>
-          ))}
+          {topError ? (
+            <p className="text-sm text-red-400">{topError}</p>
+          ) : topLoading ? (
+            <p className="text-gray-400 text-sm">Loading...</p>
+          ) : data.topQuestions.length === 0 ? (
+            <p className="text-gray-400 text-sm">No data available.</p>
+          ) : (
+            data.topQuestions.map((q, i) => (
+              <div key={i}>
+                <p className="text-white font-medium">{q.question}</p>
+                <p className="text-gray-400 text-sm">Asked {q.count} times</p>
+              </div>
+            ))
+          )}
         </div>
       </section>
     </div>

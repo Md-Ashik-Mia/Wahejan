@@ -4,6 +4,8 @@ import { Calendar, CalendarDayButton } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { userapi } from "@/lib/http/client";
+import axios, { type AxiosResponse } from "axios";
 import { addMonths, format, parseISO, subMonths } from "date-fns";
 import {
   ChevronLeft,
@@ -11,7 +13,7 @@ import {
   ExternalLink,
   Menu,
 } from "lucide-react";
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FcGoogle } from "react-icons/fc";
 
 type Appointment = {
@@ -25,7 +27,92 @@ type Appointment = {
   whatsappNumber: string;
   location: string;
   description: string;
+  eventLink?: string;
 };
+
+type UnknownRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null;
+}
+
+function extractList(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) return payload;
+  if (!isRecord(payload)) return [];
+
+  const candidates = [payload.bookings, payload.results, payload.data, payload.list];
+  for (const c of candidates) {
+    if (Array.isArray(c)) return c;
+  }
+  return [];
+}
+
+function coerceDateTimeString(input: string): string {
+  const s = input.trim();
+  if (!s) return "";
+  // API example: "2025-12-05 09:13:00" -> ISO-like
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) return s.replace(" ", "T");
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(s)) return s;
+  return s;
+}
+
+function formatApiDateTime(input: string): { date: string; time: string } {
+  const isoLike = coerceDateTimeString(input);
+  if (!isoLike) return { date: "", time: "" };
+  const d = parseISO(isoLike);
+  if (Number.isNaN(d.getTime())) return { date: "", time: "" };
+  return {
+    date: format(d, "yyyy-MM-dd"),
+    time: format(d, "HH:mm"),
+  };
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data;
+    if (isRecord(data) && typeof data.detail === "string" && data.detail.trim()) {
+      return data.detail;
+    }
+    if (typeof error.message === "string" && error.message.trim()) return error.message;
+    return fallback;
+  }
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return fallback;
+}
+
+function normalizeBooking(raw: unknown): Appointment {
+  const r: UnknownRecord = isRecord(raw) ? raw : {};
+
+  const start = typeof r.start_time === "string" ? formatApiDateTime(r.start_time) : null;
+  const end = typeof r.end_time === "string" ? formatApiDateTime(r.end_time) : null;
+
+  return {
+    id: typeof r.id === "number" ? String(r.id) : String(Math.random()).slice(2),
+    title: typeof r.title === "string" ? r.title : "",
+    startDate: start?.date || "",
+    startTime: start?.time || "",
+    endDate: end?.date || start?.date || "",
+    endTime: end?.time || "",
+    clientEmail: typeof r.client === "string" ? r.client : "",
+    whatsappNumber: "",
+    location: typeof r.location === "string" ? r.location : "",
+    description:
+      typeof r.description === "string"
+        ? r.description
+        : typeof r.notes === "string"
+          ? r.notes
+          : "",
+    eventLink: typeof r.event_link === "string" ? r.event_link : undefined,
+  };
+}
+
+function toApiDateTime(date: string, time: string): string {
+  const d = date.trim();
+  const t = time.trim();
+  if (!d || !t) return "";
+  // Backend example accepts: "YYYY-MM-DD HH:mm:ss"
+  return `${d} ${t}:00`;
+}
 
 function toISODate(date: Date) {
   return format(date, "yyyy-MM-dd");
@@ -36,113 +123,175 @@ function formatChipNumber(value: number) {
 }
 
 const AgendaIntegrationPage: React.FC = () => {
-  const [date, setDate] = useState<Date | undefined>(new Date(2025, 11, 9));
+  const [date, setDate] = useState<Date | undefined>(() => new Date());
   const [showForm, setShowForm] = useState(false);
+
+  const [googleConnecting, setGoogleConnecting] = useState(false);
+  const [googleError, setGoogleError] = useState<string | null>(null);
+  const [googleEnabled, setGoogleEnabled] = useState(false);
 
   const selectedDate = date ?? new Date();
 
-  const [calendarDate, setCalendarDate] = useState<Date>(
-    new Date(2025, 11, 1)
+  const [calendarDate, setCalendarDate] = useState<Date>(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
+
+  const [remoteAppointments, setRemoteAppointments] = useState<Appointment[]>([]);
+  const [localAppointments, setLocalAppointments] = useState<Appointment[]>([]);
+  const [appointmentsLoading, setAppointmentsLoading] = useState(false);
+  const [appointmentsError, setAppointmentsError] = useState<string | null>(null);
+  const [dayScopedApi, setDayScopedApi] = useState(false);
+
+  const appointments = useMemo(
+    () => [...remoteAppointments, ...localAppointments],
+    [remoteAppointments, localAppointments]
   );
 
-  const [appointments, setAppointments] = useState<Appointment[]>(() => {
-    const mk = (partial: Omit<Appointment, "id"> & { id?: string }) => ({
-      id: partial.id ?? String(Math.random()).slice(2),
-      ...partial,
-    });
+  const bookingsEndpoints = useMemo(
+    () => [
+      "/bookings/monthly/",
+      "/bookings/monthly",
+      "/api/bookings/monthly/",
+      "/api/bookings/monthly",
+    ],
+    []
+  );
 
-    // Seed a few items so the UI matches the screenshot behavior.
-    return [
-      mk({
-        title: "Consultation",
-        startDate: "2025-12-09",
-        startTime: "09:13",
-        endDate: "2025-12-09",
-        endTime: "09:43",
-        clientEmail: "drzraju@gmail.com",
-        whatsappNumber: "+880123456789",
-        location: "123 Business Rd, New York, NY",
-        description: "",
-      }),
-      mk({
-        title: "Follow-up",
-        startDate: "2025-12-05",
-        startTime: "10:00",
-        endDate: "2025-12-05",
-        endTime: "10:30",
-        clientEmail: "client@example.com",
-        whatsappNumber: "+880123456789",
-        location: "Online",
-        description: "",
-      }),
-      mk({
-        title: "Review",
-        startDate: "2025-12-06",
-        startTime: "14:30",
-        endDate: "2025-12-06",
-        endTime: "15:00",
-        clientEmail: "client2@example.com",
-        whatsappNumber: "+880123456789",
-        location: "Office",
-        description: "",
-      }),
-      mk({
-        title: "Kickoff",
-        startDate: "2025-12-07",
-        startTime: "11:00",
-        endDate: "2025-12-07",
-        endTime: "12:00",
-        clientEmail: "client3@example.com",
-        whatsappNumber: "+880123456789",
-        location: "Office",
-        description: "",
-      }),
-      mk({
-        title: "Check-in",
-        startDate: "2025-12-10",
-        startTime: "16:00",
-        endDate: "2025-12-10",
-        endTime: "16:20",
-        clientEmail: "client4@example.com",
-        whatsappNumber: "+880123456789",
-        location: "Online",
-        description: "",
-      }),
-      mk({
-        title: "Planning",
-        startDate: "2025-12-11",
-        startTime: "13:00",
-        endDate: "2025-12-11",
-        endTime: "13:45",
-        clientEmail: "client5@example.com",
-        whatsappNumber: "+880123456789",
-        location: "Office",
-        description: "",
-      }),
-      mk({
-        title: "Consultation",
-        startDate: "2025-12-16",
-        startTime: "09:30",
-        endDate: "2025-12-16",
-        endTime: "10:00",
-        clientEmail: "client6@example.com",
-        whatsappNumber: "+880123456789",
-        location: "Office",
-        description: "",
-      }),
-      mk({
-        title: "Touchpoint",
-        startDate: "2025-12-23",
-        startTime: "10:45",
-        endDate: "2025-12-23",
-        endTime: "11:15",
-        clientEmail: "client7@example.com",
-        whatsappNumber: "+880123456789",
-        location: "Online",
-        description: "",
-      }),
-    ];
-  });
+  const googleConnectEndpoints = useMemo(
+    () => [
+      "/google/calendar/connect/",
+      "/google/calendar/connect",
+      "/api/google/calendar/connect/",
+      "/api/google/calendar/connect",
+    ],
+    []
+  );
+
+  // Use the user's browser timezone (IANA name), e.g. "Asia/Dhaka".
+  // Fallback to UTC if not available.
+  const timezone = useMemo(() => {
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      return typeof tz === "string" && tz.trim() ? tz : "UTC";
+    } catch {
+      return "UTC";
+    }
+  }, []);
+
+  const fetchBookings = useCallback(
+    async (params: Record<string, string | number | undefined>) => {
+      let lastError: unknown = null;
+      let res: AxiosResponse<unknown> | null = null;
+
+      for (const endpoint of bookingsEndpoints) {
+        try {
+          res = await userapi.get(endpoint, { params });
+          break;
+        } catch (e: unknown) {
+          lastError = e;
+          if (axios.isAxiosError(e) && e.response && e.response.status === 401) throw e;
+          if (axios.isAxiosError(e) && e.response && e.response.status !== 404) {
+            // for 400/etc, don't keep trying wrong endpoints
+            break;
+          }
+        }
+      }
+
+      if (!res) throw lastError ?? new Error("Failed to load bookings");
+      return res.data;
+    },
+    [bookingsEndpoints]
+  );
+
+  const connectGoogleCalendar = useCallback(async () => {
+    setGoogleConnecting(true);
+    setGoogleError(null);
+
+    let lastError: unknown = null;
+    try {
+      let res: AxiosResponse<unknown> | null = null;
+      for (const endpoint of googleConnectEndpoints) {
+        try {
+          res = await userapi.post(endpoint);
+          break;
+        } catch (e: unknown) {
+          lastError = e;
+          if (axios.isAxiosError(e) && e.response && e.response.status === 401) throw e;
+          if (axios.isAxiosError(e) && e.response && e.response.status !== 404) {
+            // for 400/etc, don't keep trying wrong endpoints
+            break;
+          }
+        }
+      }
+
+      if (!res) throw lastError ?? new Error("Failed to connect Google Calendar");
+      const data = res.data;
+
+      if (isRecord(data) && typeof data.auth_url === "string" && data.auth_url.trim()) {
+        window.location.href = data.auth_url;
+        return;
+      }
+
+      throw new Error("Missing auth_url in response");
+    } catch (e: unknown) {
+      setGoogleEnabled(false);
+      setGoogleError(getErrorMessage(e, "Failed to connect Google Calendar"));
+    } finally {
+      setGoogleConnecting(false);
+    }
+  }, [googleConnectEndpoints]);
+
+  const createBookingEndpoints = useMemo(
+    () => ["/booking/", "/booking", "/api/booking/", "/api/booking"],
+    []
+  );
+
+  const [creatingBooking, setCreatingBooking] = useState(false);
+  const [createBookingError, setCreateBookingError] = useState<string | null>(null);
+
+  const fetchMonthBookings = useCallback(
+    async (targetMonth: Date, preferredDay?: number) => {
+      const month = targetMonth.getMonth() + 1;
+      const year = targetMonth.getFullYear();
+
+      setAppointmentsLoading(true);
+      setAppointmentsError(null);
+
+      try {
+        // Try month-level fetch first (no day).
+        try {
+          const data = await fetchBookings({ month, year, timezone });
+          const list = extractList(data)
+            .map(normalizeBooking)
+            .filter((a) => Boolean(a.startDate));
+          setRemoteAppointments(list);
+          setDayScopedApi(false);
+          return;
+        } catch {
+          // If the backend requires `day`, fall back to day-scoped fetch.
+          const day = typeof preferredDay === "number" ? preferredDay : 1;
+          const data = await fetchBookings({ month, year, timezone, day });
+          const list = extractList(data)
+            .map(normalizeBooking)
+            .filter((a) => Boolean(a.startDate));
+          setRemoteAppointments(list);
+          setDayScopedApi(true);
+        }
+      } catch (e: unknown) {
+        setRemoteAppointments([]);
+        setAppointmentsError(getErrorMessage(e, "Failed to load appointments"));
+      } finally {
+        setAppointmentsLoading(false);
+      }
+    },
+    [fetchBookings, timezone]
+  );
+
+  useEffect(() => {
+    const preferredDay = (date ?? new Date()).getDate();
+    void fetchMonthBookings(calendarDate, preferredDay);
+  }, [calendarDate, date, fetchMonthBookings]);
 
   const selectedISO = toISODate(selectedDate);
 
@@ -163,8 +312,9 @@ const AgendaIntegrationPage: React.FC = () => {
       startTime: "",
       endDate: initialISO,
       endTime: "",
-      clientEmail: "",
-      whatsappNumber: "",
+      client: "",
+      number: "",
+      notes: "",
       location: "",
       description: "",
     };
@@ -183,40 +333,88 @@ const AgendaIntegrationPage: React.FC = () => {
     setShowForm(true);
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    setCreateBookingError(null);
 
     const title = formData.title.trim();
     if (!title) return;
     if (!formData.startDate || !formData.startTime) return;
     if (!formData.endDate || !formData.endTime) return;
 
-    const newAppointment: Appointment = {
-      id: String(Date.now()),
+    const start_time = toApiDateTime(formData.startDate, formData.startTime);
+    const end_time = toApiDateTime(formData.endDate, formData.endTime);
+    if (!start_time || !end_time) return;
+
+    const payload = {
       title,
-      startDate: formData.startDate,
-      startTime: formData.startTime,
-      endDate: formData.endDate,
-      endTime: formData.endTime,
-      clientEmail: formData.clientEmail.trim(),
-      whatsappNumber: formData.whatsappNumber.trim(),
+      start_time,
+      end_time,
+      client: formData.client.trim(),
+      notes: formData.notes.trim(),
+      number: formData.number.trim(),
       location: formData.location.trim(),
       description: formData.description.trim(),
     };
 
-    setAppointments((prev) => [...prev, newAppointment]);
-    setDate(parseISO(newAppointment.startDate));
-    setShowForm(false);
-    setFormData((prev) => ({
-      ...prev,
-      title: "",
-      startTime: "",
-      endTime: "",
-      clientEmail: "",
-      whatsappNumber: "",
-      location: "",
-      description: "",
-    }));
+    try {
+      setCreatingBooking(true);
+
+      let lastError: unknown = null;
+      let res: AxiosResponse<unknown> | null = null;
+
+      for (const endpoint of createBookingEndpoints) {
+        try {
+          res = await userapi.post(endpoint, payload);
+          break;
+        } catch (err: unknown) {
+          lastError = err;
+          if (axios.isAxiosError(err) && err.response && err.response.status === 401) throw err;
+          if (axios.isAxiosError(err) && err.response && err.response.status !== 404) {
+            // for 400/etc, don't keep trying wrong endpoints
+            break;
+          }
+        }
+      }
+
+      if (!res) throw lastError ?? new Error("Failed to create booking");
+
+      const created = normalizeBooking(res.data);
+      if (created.startDate) setDate(parseISO(created.startDate));
+      if (created.startDate) {
+        const d = parseISO(created.startDate);
+        if (!Number.isNaN(d.getTime())) setCalendarDate(new Date(d.getFullYear(), d.getMonth(), 1));
+      }
+
+      // Refresh the calendar/list from backend (preferred), and also optimistically append.
+      setLocalAppointments((prev) => [created, ...prev]);
+      void fetchMonthBookings(
+        new Date(
+          (created.startDate ? parseISO(created.startDate) : selectedDate).getFullYear(),
+          (created.startDate ? parseISO(created.startDate) : selectedDate).getMonth(),
+          1
+        ),
+        (created.startDate ? parseISO(created.startDate) : selectedDate).getDate()
+      );
+
+      setShowForm(false);
+      setFormData((prev) => ({
+        ...prev,
+        title: "",
+        startTime: "",
+        endTime: "",
+        client: "",
+        number: "",
+        notes: "",
+        location: "",
+        description: "",
+      }));
+    } catch (err: unknown) {
+      setCreateBookingError(getErrorMessage(err, "Failed to create booking"));
+    } finally {
+      setCreatingBooking(false);
+    }
   };
 
   const handleCancel = () => setShowForm(false);
@@ -309,24 +507,24 @@ const AgendaIntegrationPage: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <Label className="text-gray-400 font-normal">Client Email</Label>
+              <Label className="text-gray-400 font-normal">Client</Label>
               <Input
-                placeholder="Client's email here"
-                value={formData.clientEmail}
+                placeholder="Client email here"
+                value={formData.client}
                 onChange={(e) =>
-                  setFormData((p) => ({ ...p, clientEmail: e.target.value }))
+                  setFormData((p) => ({ ...p, client: e.target.value }))
                 }
                 className="bg-[#1C1C1E] border-gray-800 text-gray-200 h-12 md:h-14 rounded-xl"
               />
             </div>
 
             <div className="space-y-2">
-              <Label className="text-gray-400 font-normal">Whatsapp Number</Label>
+              <Label className="text-gray-400 font-normal">Number</Label>
               <Input
-                placeholder="Client's number here"
-                value={formData.whatsappNumber}
+                placeholder="Number here"
+                value={formData.number}
                 onChange={(e) =>
-                  setFormData((p) => ({ ...p, whatsappNumber: e.target.value }))
+                  setFormData((p) => ({ ...p, number: e.target.value }))
                 }
                 className="bg-[#1C1C1E] border-gray-800 text-gray-200 h-12 md:h-14 rounded-xl"
               />
@@ -356,12 +554,27 @@ const AgendaIntegrationPage: React.FC = () => {
               />
             </div>
 
+            <div className="space-y-2">
+              <Label className="text-gray-400 font-normal">Notes</Label>
+              <Textarea
+                placeholder="Notes"
+                value={formData.notes}
+                onChange={(e) => setFormData((p) => ({ ...p, notes: e.target.value }))}
+                className="bg-[#1C1C1E] border-gray-800 text-gray-200 min-h-[120px] resize-none rounded-xl"
+              />
+            </div>
+
+            {createBookingError ? (
+              <p className="text-sm text-red-200">{createBookingError}</p>
+            ) : null}
+
             <div className="pt-2 space-y-3">
               <Button
                 type="submit"
+                disabled={creatingBooking}
                 className="w-full h-12 md:h-14 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-base md:text-lg"
               >
-                Save & Send Whatsapp
+                {creatingBooking ? "Saving..." : "Save"}
               </Button>
               <Button
                 type="button"
@@ -446,15 +659,24 @@ const AgendaIntegrationPage: React.FC = () => {
             <style jsx global>{`
               .agenda-rdp [data-slot='calendar'] {
                 width: 100%;
+                margin: 0 auto;
               }
               .agenda-rdp .rdp {
                 width: 100%;
+                margin: 0 auto;
               }
               .agenda-rdp .rdp-months {
                 width: 100%;
               }
               .agenda-rdp .rdp-month {
                 width: 100%;
+                margin: 0 auto;
+              }
+              .agenda-rdp .rdp-weekdays {
+                justify-content: space-between;
+              }
+              .agenda-rdp .rdp-weekday {
+                text-align: center;
               }
               .agenda-rdp .rdp-weekday {
                 color: rgba(156, 163, 175, 1);
@@ -462,21 +684,30 @@ const AgendaIntegrationPage: React.FC = () => {
                 font-weight: 500;
               }
 
+              .agenda-rdp .rdp-week {
+                justify-content: space-between;
+              }
+
+              .agenda-rdp .rdp-day {
+                display: flex;
+                justify-content: center;
+              }
+
               /* Make day buttons look like the app circles */
               .agenda-rdp button[data-day] {
-                width: 44px !important;
-                height: 44px !important;
+                width: 40px !important;
+                height: 40px !important;
                 border-radius: 9999px !important;
                 margin: 0 auto;
-                font-size: 1.05rem;
+                font-size: 1rem;
                 font-weight: 500;
               }
 
               @media (min-width: 768px) {
                 .agenda-rdp button[data-day] {
-                  width: 64px !important;
-                  height: 64px !important;
-                  font-size: 1.35rem;
+                  width: 56px !important;
+                  height: 56px !important;
+                  font-size: 1.25rem;
                 }
                 .agenda-rdp .rdp-weekday {
                   font-size: 1.05rem;
@@ -502,36 +733,46 @@ const AgendaIntegrationPage: React.FC = () => {
               }
             `}</style>
 
-            <Calendar
-              mode="single"
-              month={calendarDate}
-              onMonthChange={setCalendarDate}
-              selected={date}
-              onSelect={(d) => {
-                setDate(d);
-                if (
-                  d &&
-                  (d.getFullYear() !== calendarDate.getFullYear() ||
-                    d.getMonth() !== calendarDate.getMonth())
-                ) {
-                  setCalendarDate(new Date(d.getFullYear(), d.getMonth(), 1));
-                }
-              }}
-              showOutsideDays
-              components={{ DayButton: AgendaDayButton }}
-              modifiers={{ hasAppointment: appointmentDates }}
-              className="w-full"
-              classNames={{
-                nav: "hidden",
-                month_caption: "hidden",
-                months: "w-full",
-                month: "w-full",
-                table: "w-full border-collapse",
-                head_row: "",
-                row: "",
-                cell: "w-1/7 py-1",
-              }}
-            />
+            <div className="flex justify-center">
+              <Calendar
+                mode="single"
+                month={calendarDate}
+                onMonthChange={setCalendarDate}
+                selected={date}
+                onSelect={(d) => {
+                  setDate(d);
+                  if (
+                    d &&
+                    (d.getFullYear() !== calendarDate.getFullYear() ||
+                      d.getMonth() !== calendarDate.getMonth())
+                  ) {
+                    setCalendarDate(new Date(d.getFullYear(), d.getMonth(), 1));
+                  }
+                  if (d && dayScopedApi) {
+                    void fetchMonthBookings(
+                      new Date(d.getFullYear(), d.getMonth(), 1),
+                      d.getDate()
+                    );
+                  }
+                }}
+                showOutsideDays
+                components={{ DayButton: AgendaDayButton }}
+                modifiers={{ hasAppointment: appointmentDates }}
+                classNames={{
+                  nav: "hidden",
+                  month_caption: "hidden",
+                  months: "w-full",
+                  month: "w-full",
+                  table: "w-full",
+                }}
+              />
+            </div>
+
+            {appointmentsError ? (
+              <p className="text-sm text-red-400 mt-3">{appointmentsError}</p>
+            ) : appointmentsLoading ? (
+              <p className="text-sm text-gray-400 mt-3">Loading appointments...</p>
+            ) : null}
           </div>
         </div>
 
@@ -550,13 +791,38 @@ const AgendaIntegrationPage: React.FC = () => {
             <div className="w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-[#2C2C2E] flex items-center justify-center shrink-0">
               <FcGoogle className="w-7 h-7 md:w-8 md:h-8" />
             </div>
-            <div className="flex-1">
-              <div className="text-lg md:text-xl font-semibold">
-                Google Calendar
+            <div className="flex-1 flex items-center justify-between gap-4">
+              <div>
+                <div className="text-lg md:text-xl font-semibold">Google Calendar</div>
+                {googleError ? (
+                  <div className="mt-2 text-sm text-red-200">{googleError}</div>
+                ) : null}
               </div>
-              <div className="mt-2 inline-flex items-center rounded-xl bg-red-900/40 px-4 py-1 text-sm md:text-base text-red-200">
-                connected
-              </div>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={googleEnabled}
+                disabled={googleConnecting}
+                onClick={() => {
+                  const next = !googleEnabled;
+                  setGoogleEnabled(next);
+                  if (next) void connectGoogleCalendar();
+                }}
+                className={
+                  "relative inline-flex h-7 w-12 items-center rounded-full transition-colors " +
+                  (googleEnabled ? "bg-blue-600" : "bg-gray-700") +
+                  (googleConnecting ? " opacity-60" : "")
+                }
+                aria-label="Google Calendar"
+              >
+                <span
+                  className={
+                    "inline-block h-5 w-5 transform rounded-full bg-white transition-transform " +
+                    (googleEnabled ? "translate-x-6" : "translate-x-1")
+                  }
+                />
+              </button>
             </div>
           </div>
         </div>
@@ -583,7 +849,9 @@ const AgendaIntegrationPage: React.FC = () => {
                 >
                   <div className="flex gap-4">
                     <div className="text-blue-500 text-lg md:text-xl font-semibold shrink-0 pt-1">
-                      {format(parseISO(`${a.startDate}T${a.startTime}:00`), "h:mm a")}
+                      {a.startDate && a.startTime
+                        ? format(parseISO(`${a.startDate}T${a.startTime}:00`), "h:mm a")
+                        : "—"}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-2xl md:text-3xl font-semibold leading-tight">
@@ -599,13 +867,26 @@ const AgendaIntegrationPage: React.FC = () => {
                           {a.location}
                         </div>
                       ) : null}
-                      <button
-                        type="button"
-                        className="mt-3 inline-flex items-center gap-2 text-blue-500 text-base md:text-lg font-medium"
-                      >
-                        Open in Calendar
-                        <ExternalLink className="w-4 h-4 md:w-5 md:h-5" />
-                      </button>
+                      {a.eventLink ? (
+                        <a
+                          href={a.eventLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-3 inline-flex items-center gap-2 text-blue-500 text-base md:text-lg font-medium"
+                        >
+                          Open in Calendar
+                          <ExternalLink className="w-4 h-4 md:w-5 md:h-5" />
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          className="mt-3 inline-flex items-center gap-2 text-blue-500 text-base md:text-lg font-medium"
+                          disabled
+                        >
+                          Open in Calendar
+                          <ExternalLink className="w-4 h-4 md:w-5 md:h-5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
