@@ -11,6 +11,26 @@ function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null;
 }
 
+type KnowledgeCategoryCounts = {
+  opening_hours: number;
+  knowledge_base: number;
+  services: number;
+};
+
+function normalizeKnowledgeCategoryCounts(raw: unknown): KnowledgeCategoryCounts {
+  const r: UnknownRecord = isRecord(raw) ? raw : {};
+
+  const openingHours = r.opening_hours;
+  const knowledgeBase = r.knowledge_base;
+  const services = r.services;
+
+  return {
+    opening_hours: typeof openingHours === "number" ? openingHours : 0,
+    knowledge_base: typeof knowledgeBase === "number" ? knowledgeBase : 0,
+    services: typeof services === "number" ? services : 0,
+  };
+}
+
 type ActivityLogItem = {
   id: number;
   activity_type: string;
@@ -76,18 +96,56 @@ const AIKnowledgeBase: React.FC = () => {
   // Fake Data
   const knowledgeHealth = 70;
   const missingTopics = ['Service Prices', 'Refund Policy', 'Delivery Times'];
-  const categories = [
-    { name: 'Company Info', items: 5, icon: '🏢' },
-    { name: 'Services', items: 7, icon: '🛠️' },
-    { name: 'Prices', items: 12, icon: '💲' },
-    { name: 'Opening Hours', items: 3, icon: '🕒' },
-    { name: 'Policies', items: 2, icon: '📜' },
-    { name: 'FAQs', items: 14, icon: '❓' }
-  ];
+
+  const [categoryCounts, setCategoryCounts] = useState<KnowledgeCategoryCounts>({
+    opening_hours: 0,
+    knowledge_base: 0,
+    services: 0,
+  });
+  const [categoryLoading, setCategoryLoading] = useState(false);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
 
   const [activityLogs, setActivityLogs] = useState<ActivityLogItem[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState<string | null>(null);
+
+  const fetchCategoryCounts = useCallback(async () => {
+    setCategoryLoading(true);
+    setCategoryError(null);
+
+    const candidates = [
+      "/api/knowledge-category/",
+      "/api/knowledge-category",
+      "/knowledge-category/",
+      "/knowledge-category",
+    ];
+
+    let lastError: unknown = null;
+
+    try {
+      let res: AxiosResponse<unknown> | null = null;
+
+      for (const endpoint of candidates) {
+        try {
+          res = await userapi.get(endpoint);
+          break;
+        } catch (e: unknown) {
+          lastError = e;
+          if (axios.isAxiosError(e) && e.response && e.response.status !== 404) {
+            throw e;
+          }
+        }
+      }
+
+      if (!res) throw lastError ?? new Error("Failed to load knowledge categories");
+
+      setCategoryCounts(normalizeKnowledgeCategoryCounts(res.data));
+    } catch (e: unknown) {
+      setCategoryError(getErrorMessage(e, "Failed to load knowledge categories"));
+    } finally {
+      setCategoryLoading(false);
+    }
+  }, []);
 
   const fetchActivityLogs = useCallback(async () => {
     setActivityLoading(true);
@@ -140,6 +198,18 @@ const AIKnowledgeBase: React.FC = () => {
     void fetchActivityLogs();
   }, [fetchActivityLogs]);
 
+  useEffect(() => {
+    void fetchCategoryCounts();
+  }, [fetchCategoryCounts]);
+
+  const categories = [
+    { name: "Company Info", items: categoryCounts.knowledge_base, icon: "🏢" },
+    { name: "Services", items: categoryCounts.services, icon: "🛠️" },
+    // Price count is the same as service count (as requested)
+    { name: "Prices", items: categoryCounts.services, icon: "💲" },
+    { name: "Opening Hours", items: categoryCounts.opening_hours, icon: "🕒" },
+  ];
+
   return (
     <div className="min-h-screen bg-black text-white p-6 space-y-8">
       {/* Header */}
@@ -190,13 +260,17 @@ const AIKnowledgeBase: React.FC = () => {
       <section>
         <h2 className="text-lg font-semibold bg-blue-600 px-4 py-2 rounded-t-lg">Knowledge Categories</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 bg-black p-4 rounded-b-lg">
-          {categories.map((cat, idx) => (
-            <div key={idx} className="bg-[#272727] rounded-xl p-6 flex flex-col items-center justify-center shadow-md hover:bg-gray-700 transition">
-              <div className="text-4xl mb-2">{cat.icon}</div>
-              <h3 className="font-semibold">{cat.name}</h3>
-              <p className="text-gray-400 text-sm">{cat.items} items</p>
-            </div>
-          ))}
+          {categoryError ? (
+            <p className="text-sm text-red-400">{categoryError}</p>
+          ) : (
+            categories.map((cat, idx) => (
+              <div key={idx} className="bg-[#272727] rounded-xl p-6 flex flex-col items-center justify-center shadow-md hover:bg-gray-700 transition">
+                <div className="text-4xl mb-2">{cat.icon}</div>
+                <h3 className="font-semibold">{cat.name}</h3>
+                <p className="text-gray-400 text-sm">{categoryLoading ? "Loading..." : `${cat.items} items`}</p>
+              </div>
+            ))
+          )}
         </div>
       </section>
 

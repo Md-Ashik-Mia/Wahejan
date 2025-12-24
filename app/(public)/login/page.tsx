@@ -103,23 +103,51 @@
 // app/(public)/login/page.tsx
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { signIn, getSession } from "next-auth/react";
+import { getSession, signIn } from "next-auth/react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+
+type ClientSession = {
+  user?: {
+    role?: string;
+    hasPlan?: boolean;
+  };
+  accessToken?: string;
+} | null;
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const router = useRouter();
 
+  const buildClientInfo = () => {
+    if (typeof window === "undefined") return null;
+
+    const info = {
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+      language: navigator.language,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      screen: `${window.screen.width}x${window.screen.height}`,
+    };
+
+    return info;
+  };
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
+
+    const clientInfo = buildClientInfo();
+    if (clientInfo) {
+      localStorage.setItem("client_info", JSON.stringify(clientInfo));
+    }
 
     const res = await signIn("credentials", {
       redirect: false, // we handle redirect manually
       email,
       password,
+      client_info: clientInfo ? JSON.stringify(clientInfo) : "",
     });
 
     if (res?.error) {
@@ -128,12 +156,12 @@ export default function LoginPage() {
     }
 
     // 🔐 Get session from NextAuth
-    const session = await getSession();
-    const role = (session?.user as any)?.role;
-    const hasPlan = (session?.user as any)?.hasPlan;
+    const session = (await getSession()) as ClientSession;
+    const role = session?.user?.role;
+    const hasPlan = session?.user?.hasPlan;
 
     // 🔑 Save accessToken to localStorage for axios interceptors
-    const accessToken = (session as any)?.accessToken;
+    const accessToken = session?.accessToken;
     if (accessToken) {
       localStorage.setItem("access_token", accessToken);
     }
@@ -149,6 +177,8 @@ export default function LoginPage() {
       router.push("/");
     }
   }
+
+
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-black text-white">
