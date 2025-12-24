@@ -108,13 +108,38 @@ function attachAuth(
   return config;
 }
 
+/** Attach client/device info only for public/auth calls (no auth required). */
+function attachClientInfo(
+  config: InternalAxiosRequestConfig
+): InternalAxiosRequestConfig {
+  if (typeof window !== "undefined") {
+    // Browser cannot override real User-Agent; use a custom header.
+    const clientInfo = localStorage.getItem("client_info");
+    if (clientInfo) {
+      const headers = config.headers;
+      if (headers instanceof AxiosHeaders) {
+        headers.set("X-Client-Info", clientInfo);
+      } else {
+        (headers as Record<string, string | undefined>)["X-Client-Info"] =
+          clientInfo;
+      }
+    }
+  }
+  return config;
+}
+
+
 /** Generic API instance (can be used in server or client code) */
 export const api = axios.create({
   baseURL: BASE_URL,
   headers: {
     "Content-Type": "application/json",
+    // "User-Agent":`${brand}, ${deviceName}, ${Platform.OS}`
   },
 });
+
+// REQUEST interceptors (public/auth requests)
+api.interceptors.request.use(attachClientInfo);
 
 /** Regular user API */
 export const userApi = axios.create({
