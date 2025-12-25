@@ -1,6 +1,6 @@
 "use client";
 import { userApi } from "@/lib/http/client";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 type ApiPlan = {
   id: number;
@@ -27,6 +27,19 @@ type ApiActiveSubscription = {
 
 type CreateSubscriptionResponse = {
   redirect_url?: string;
+};
+
+type StripeOnboardResponse = {
+  onboarding_url?: string;
+};
+
+type ApiSession = {
+  session_id: number;
+  device: string;
+  browser: string;
+  location: string;
+  ip: string;
+  last_active: string;
 };
 
 const SettingsPage: React.FC = () => {
@@ -81,13 +94,6 @@ const SettingsPage: React.FC = () => {
   // 🔹 FAKE DATA (Simulating API responses)
   // ============================================
   const fakeUserSettings = {
-    notifications: {
-      chat: true,
-      booking: true,
-      payment: true,
-      system: true,
-      email: true,
-    },
     activePlan: null as string | null,
     canceledPlans: [],
     twoFactor: true,
@@ -101,7 +107,6 @@ const SettingsPage: React.FC = () => {
   // ============================================
   // 🔹 STATE (Loaded from API normally)
   // ============================================
-  const [notifications, setNotifications] = useState(fakeUserSettings.notifications);
   const [plans, setPlans] = useState<ApiPlan[]>([]);
   const [plansLoading, setPlansLoading] = useState(true);
   const [plansError, setPlansError] = useState<string | null>(null);
@@ -114,7 +119,53 @@ const SettingsPage: React.FC = () => {
   const [canceledPlans, setCanceledPlans] = useState<string[]>(fakeUserSettings.canceledPlans);
   const [twoFactor, setTwoFactor] = useState(fakeUserSettings.twoFactor);
   const [aiTraining, setAiTraining] = useState(fakeUserSettings.aiTraining);
-  const [sessions] = useState(fakeUserSettings.sessions);
+  const [sessions, setSessions] = useState<ApiSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
+  const [logoutLoadingSessionId, setLogoutLoadingSessionId] = useState<number | null>(null);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
+  const [logoutAllLoading, setLogoutAllLoading] = useState(false);
+  const [logoutAllError, setLogoutAllError] = useState<string | null>(null);
+  const [stripeOnboardLoading, setStripeOnboardLoading] = useState(false);
+  const [stripeOnboardError, setStripeOnboardError] = useState<string | null>(null);
+
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [changePasswordLoading, setChangePasswordLoading] = useState(false);
+  const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
+
+  const apiVariantPaths = useCallback((pathWithoutApiPrefix: string) => {
+    const baseUrl = (userApi.defaults.baseURL ?? "").replace(/\/+$/, "");
+    const baseHasApi = baseUrl.endsWith("/api");
+    const pathWithApiPrefix = `/api${pathWithoutApiPrefix}`;
+    return baseHasApi
+      ? [pathWithoutApiPrefix, pathWithApiPrefix]
+      : [pathWithApiPrefix, pathWithoutApiPrefix];
+  }, []);
+
+  const sortedSessions = useMemo(() => {
+    return sessions
+      .slice()
+      .sort((a, b) => {
+        const aTime = Date.parse(a.last_active);
+        const bTime = Date.parse(b.last_active);
+        if (Number.isNaN(aTime) || Number.isNaN(bTime)) return 0;
+        return bTime - aTime;
+      });
+  }, [sessions]);
+
+  const mostRecentSessionId = useMemo(() => {
+    if (sessions.length === 0) return null;
+    const mostRecent = sessions.reduce((max, cur) => {
+      const curMs = Date.parse(cur.last_active);
+      const maxMs = Date.parse(max.last_active);
+      if (Number.isNaN(curMs)) return max;
+      if (Number.isNaN(maxMs)) return cur;
+      return curMs > maxMs ? cur : max;
+    }, sessions[0]);
+
+    return mostRecent?.session_id ?? null;
+  }, [sessions]);
 
   const loadActiveSubscription = useCallback(async (opts?: { silent?: boolean }) => {
     const silent = opts?.silent ?? false;
@@ -201,6 +252,194 @@ const SettingsPage: React.FC = () => {
   }, [loadActiveSubscription]);
 
   // ============================================
+  // 🔹 Fetch active sessions
+  // ============================================
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchSessions() {
+      setSessionsLoading(true);
+      setSessionsError(null);
+      try {
+        const [primaryPath, fallbackPath] = apiVariantPaths("/auth/sessions/");
+        let res;
+        try {
+          res = await userApi.get<ApiSession[]>(primaryPath);
+        } catch (error: unknown) {
+          if (getStatusCode(error) === 404) {
+            res = await userApi.get<ApiSession[]>(fallbackPath);
+          } else {
+            throw error;
+          }
+        }
+
+        const data = Array.isArray(res.data) ? res.data : [];
+        if (!cancelled) setSessions(data);
+      } catch (error: unknown) {
+        if (!cancelled) setSessionsError(getErrorMessage(error));
+      } finally {
+        if (!cancelled) setSessionsLoading(false);
+      }
+    }
+
+    fetchSessions();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiVariantPaths, getErrorMessage, getStatusCode]);
+
+  const refreshSessions = useCallback(async () => {
+    setSessionsError(null);
+    try {
+      const [primaryPath, fallbackPath] = apiVariantPaths("/auth/sessions/");
+      let res;
+      try {
+        res = await userApi.get<ApiSession[]>(primaryPath);
+      } catch (error: unknown) {
+        if (getStatusCode(error) === 404) {
+          res = await userApi.get<ApiSession[]>(fallbackPath);
+        } else {
+          throw error;
+        }
+      }
+
+      const data = Array.isArray(res.data) ? res.data : [];
+      setSessions(data);
+    } catch (error: unknown) {
+      setSessionsError(getErrorMessage(error));
+    }
+  }, [apiVariantPaths, getErrorMessage, getStatusCode]);
+
+  const handleLogoutSession = useCallback(
+    async (sessionId: number) => {
+      setLogoutError(null);
+      setLogoutLoadingSessionId(sessionId);
+      try {
+        const [endpoint, fallbackEndpoint] = apiVariantPaths(
+          `/auth/logout-session/${sessionId}/`
+        );
+
+        try {
+          await userApi.post(endpoint, {});
+        } catch (error: unknown) {
+          if (getStatusCode(error) === 404) {
+            await userApi.post(fallbackEndpoint, {});
+          } else {
+            throw error;
+          }
+        }
+
+        await refreshSessions();
+      } catch (error: unknown) {
+        setLogoutError(getErrorMessage(error));
+      } finally {
+        setLogoutLoadingSessionId(null);
+      }
+    },
+    [apiVariantPaths, getErrorMessage, getStatusCode, refreshSessions]
+  );
+
+  const handleLogoutAllDevices = useCallback(async () => {
+    setLogoutAllError(null);
+    setLogoutAllLoading(true);
+    try {
+      const [endpoint, fallbackEndpoint] = apiVariantPaths(
+        "/auth/logout-all-sessions/"
+      );
+
+      try {
+        await userApi.post(endpoint, {});
+      } catch (error: unknown) {
+        if (getStatusCode(error) === 404) {
+          await userApi.post(fallbackEndpoint, {});
+        } else {
+          throw error;
+        }
+      }
+
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("access_token");
+      }
+
+      // Clear any cookie-based role/session markers and then redirect.
+      try {
+        await fetch("/api/auth/logout", { method: "POST" });
+      } catch {
+        // ignore
+      }
+
+      window.location.assign("/login");
+    } catch (error: unknown) {
+      setLogoutAllError(getErrorMessage(error));
+    } finally {
+      setLogoutAllLoading(false);
+    }
+  }, [apiVariantPaths, getErrorMessage, getStatusCode]);
+
+  const handleStripeOnboard = useCallback(async () => {
+    setStripeOnboardError(null);
+    setStripeOnboardLoading(true);
+    try {
+      const [endpoint, fallbackEndpoint] = apiVariantPaths(
+        "/finance/connect/onboard/"
+      );
+
+      let res;
+      try {
+        res = await userApi.post<StripeOnboardResponse>(endpoint, {});
+      } catch (error: unknown) {
+        if (getStatusCode(error) === 404) {
+          res = await userApi.post<StripeOnboardResponse>(fallbackEndpoint, {});
+        } else {
+          throw error;
+        }
+      }
+
+      const redirectUrl = res?.data?.onboarding_url;
+      if (typeof redirectUrl === "string" && redirectUrl.trim().length > 0) {
+        window.location.assign(redirectUrl);
+        return;
+      }
+
+      setStripeOnboardError("Stripe onboarding URL was not provided by the server");
+    } catch (error: unknown) {
+      setStripeOnboardError(getErrorMessage(error));
+    } finally {
+      setStripeOnboardLoading(false);
+    }
+  }, [apiVariantPaths, getErrorMessage, getStatusCode]);
+
+  const handleChangePassword = useCallback(async () => {
+    const trimmed = newPassword.trim();
+    if (!trimmed) {
+      setChangePasswordError("Please enter a new password");
+      return;
+    }
+
+    setChangePasswordError(null);
+    setChangePasswordLoading(true);
+    try {
+      const [endpoint, fallbackEndpoint] = apiVariantPaths("/auth/users/me/");
+      try {
+        await userApi.patch(endpoint, { password: trimmed });
+      } catch (error: unknown) {
+        if (getStatusCode(error) === 404) {
+          await userApi.patch(fallbackEndpoint, { password: trimmed });
+        } else {
+          throw error;
+        }
+      }
+
+      setChangePasswordOpen(false);
+      setNewPassword("");
+    } catch (error: unknown) {
+      setChangePasswordError(getErrorMessage(error));
+    } finally {
+      setChangePasswordLoading(false);
+    }
+  }, [apiVariantPaths, getErrorMessage, getStatusCode, newPassword]);
+
+  // ============================================
   // 🔹 Fetch user data (commented for now)
   // ============================================
   /*
@@ -223,11 +462,6 @@ const SettingsPage: React.FC = () => {
   // ============================================
   // 🔹 Handlers
   // ============================================
-  const toggleNotification = (key: keyof typeof notifications) => {
-    setNotifications((prev) => ({ ...prev, [key]: !prev[key] }));
-    // TODO: PATCH /api/settings/notifications
-  };
-
   const handleCancelPlan = (plan: string) => {
     if (canceledPlans.includes(plan)) {
       setCanceledPlans((prev) => prev.filter((p) => p !== plan));
@@ -292,71 +526,37 @@ const SettingsPage: React.FC = () => {
   // ============================================
   return (
     <div className="min-h-screen bg-black text-white p-6 space-y-10">
-      {/* ================= NOTIFICATIONS ================= */}
-      <section>
-        <h2 className="text-xl font-semibold mb-4">Notifications</h2>
-        <div className="bg-[#272727]  rounded-xl p-6 grid md:grid-cols-2 gap-6 shadow-lg">
-          <div>
-            <h3 className="font-semibold mb-3">Language Settings</h3>
-            {[
-              { label: "New Chat Messages", key: "chat" },
-              { label: "New Booking / Appointment", key: "booking" },
-              { label: "Payment Confirmation", key: "payment" },
-            ].map((item) => (
-              <div
-                key={item.key}
-                className="flex justify-between items-center py-2 border-b border-gray-700 hover:bg-gray-700/50 rounded-lg transition-all"
-              >
-                <span>{item.label}</span>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="sr-only peer"
-                    checked={notifications[item.key as keyof typeof notifications]}
-                    onChange={() => toggleNotification(item.key as keyof typeof notifications)}
-                  />
-                  <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:bg-blue-600 transition-all"></div>
-                  <div className="absolute left-0.5 top-0.5 h-5 w-5 bg-white rounded-full transition-transform peer-checked:translate-x-full"></div>
-                </label>
-              </div>
-            ))}
-          </div>
-
-          <div>
-            <div className="flex justify-between items-center py-2 border-b border-gray-700 hover:bg-gray-700/50 rounded-lg transition-all">
-              <span>Integration or System Issues</span>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="sr-only peer"
-                  checked={notifications.system}
-                  onChange={() => toggleNotification("system")}
-                />
-                <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:bg-blue-600 transition-all"></div>
-                <div className="absolute left-0.5 top-0.5 h-5 w-5 bg-white rounded-full transition-transform peer-checked:translate-x-full"></div>
-              </label>
-            </div>
-            <h3 className="font-semibold mt-4 mb-2">Channel Preferences</h3>
-            <div className="flex justify-between items-center py-2 border-b border-gray-700 hover:bg-gray-700/50 rounded-lg transition-all">
-              <span className="flex items-center gap-2">📧 Email Notifications</span>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="sr-only peer"
-                  checked={notifications.email}
-                  onChange={() => toggleNotification("email")}
-                />
-                <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:bg-blue-600 transition-all"></div>
-                <div className="absolute left-0.5 top-0.5 h-5 w-5 bg-white rounded-full transition-transform peer-checked:translate-x-full"></div>
-              </label>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* ================= SUBSCRIPTION ================= */}
       <section>
         <h2 className="text-xl font-semibold mb-4">Subscription Management</h2>
+
+        <div className="bg-[#272727] rounded-xl p-6 shadow-lg mb-6 border border-gray-700">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-white font-semibold">Stripe</p>
+              <p className="text-gray-400 text-sm mt-1">
+                Connect Stripe to enable payments and onboarding.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleStripeOnboard}
+              disabled={stripeOnboardLoading}
+              className={`bg-blue-600 px-4 py-2 rounded-lg text-sm hover:bg-blue-700 active:scale-95 transition ${
+                stripeOnboardLoading ? "opacity-70 cursor-not-allowed" : ""
+              }`}
+            >
+              {stripeOnboardLoading ? "Redirecting..." : "Add Stripe"}
+            </button>
+          </div>
+
+          {stripeOnboardError ? (
+            <div className="mt-4">
+              <p className="text-red-400 font-semibold text-sm">Stripe onboarding failed</p>
+              <p className="text-gray-400 text-sm mt-1">{stripeOnboardError}</p>
+            </div>
+          ) : null}
+        </div>
 
         {upgradeError ? (
           <div className="bg-[#272727] rounded-xl p-4 shadow-lg mb-6">
@@ -483,7 +683,14 @@ const SettingsPage: React.FC = () => {
               <h4 className="font-semibold">Change Password</h4>
               <p className="text-gray-400 text-sm">Update your password</p>
             </div>
-            <button className="bg-blue-600 px-4 py-1 rounded-lg text-sm hover:bg-blue-700 active:scale-95 transition">
+            <button
+              type="button"
+              onClick={() => {
+                setChangePasswordError(null);
+                setChangePasswordOpen(true);
+              }}
+              className="bg-blue-600 px-4 py-1 rounded-lg text-sm hover:bg-blue-700 active:scale-95 transition"
+            >
               Change
             </button>
           </div>
@@ -507,29 +714,148 @@ const SettingsPage: React.FC = () => {
 
           <div>
             <h4 className="font-semibold mb-2">Active Sessions</h4>
-            <div className="space-y-2 text-sm">
-              {sessions.map((s, i) => (
-                <div key={i} className="flex justify-between bg-gray-700 p-3 rounded-lg hover:bg-gray-600/70 transition">
-                  <div>
-                    <p>{s.device}</p>
-                    <p className="text-gray-400">
-                      {s.ip} • {s.location} • {s.time}
-                    </p>
-                  </div>
-                  {s.active ? (
-                    <span className="text-green-400 text-xs self-center">Active</span>
-                  ) : (
-                    <button className="text-red-400 text-xs hover:text-red-300 transition">Logout</button>
-                  )}
-                </div>
-              ))}
-              <button className="mt-3 bg-red-700 px-4 py-2 rounded-lg text-sm hover:bg-red-800 active:scale-95 transition">
-                Logout from all devices
+            {logoutError ? (
+              <div className="mb-3">
+                <p className="text-red-400 font-semibold text-sm">Logout failed</p>
+                <p className="text-gray-400 text-sm mt-1">{logoutError}</p>
+              </div>
+            ) : null}
+            {logoutAllError ? (
+              <div className="mb-3">
+                <p className="text-red-400 font-semibold text-sm">Logout all devices failed</p>
+                <p className="text-gray-400 text-sm mt-1">{logoutAllError}</p>
+              </div>
+            ) : null}
+            {sessionsLoading ? (
+              <div className="text-sm text-gray-300">Loading sessions...</div>
+            ) : sessionsError ? (
+              <div>
+                <p className="text-red-400 font-semibold text-sm">Failed to load sessions</p>
+                <p className="text-gray-400 text-sm mt-1">{sessionsError}</p>
+              </div>
+            ) : sessions.length === 0 ? (
+              <div className="text-sm text-gray-300">No sessions found.</div>
+            ) : (
+              <div className="space-y-2 text-sm">
+                {sortedSessions.map((s) => {
+                  const lastActiveMs = Date.parse(s.last_active);
+                  const lastActiveLabel = Number.isNaN(lastActiveMs)
+                    ? s.last_active
+                    : new Date(lastActiveMs).toLocaleString();
+
+                  const isActive = mostRecentSessionId === s.session_id;
+                  const isLoggingOut = logoutLoadingSessionId === s.session_id;
+
+                  return (
+                    <div
+                      key={s.session_id}
+                      className="flex justify-between bg-gray-700 p-3 rounded-lg hover:bg-gray-600/70 transition"
+                    >
+                      <div>
+                        <p>
+                          {s.device} • {s.browser}
+                        </p>
+                        <p className="text-gray-400">
+                          {s.ip} • {s.location} • {lastActiveLabel}
+                        </p>
+                      </div>
+                      {isActive ? (
+                        <span className="text-green-400 text-xs self-center">Active</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleLogoutSession(s.session_id)}
+                          disabled={isLoggingOut}
+                          className={`text-red-400 text-xs hover:text-red-300 transition ${
+                            isLoggingOut ? "opacity-70 cursor-not-allowed" : ""
+                          }`}
+                        >
+                          {isLoggingOut ? "Logging out..." : "Logout"}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={handleLogoutAllDevices}
+                  disabled={logoutAllLoading}
+                  className={`mt-3 bg-red-700 px-4 py-2 rounded-lg text-sm hover:bg-red-800 active:scale-95 transition ${
+                    logoutAllLoading ? "opacity-70 cursor-not-allowed" : ""
+                  }`}
+                >
+                  {logoutAllLoading ? "Logging out..." : "Logout from all devices"}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {changePasswordOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
+          <div className="w-full max-w-md bg-[#272727] rounded-xl shadow-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Change Password</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  if (changePasswordLoading) return;
+                  setChangePasswordOpen(false);
+                  setNewPassword("");
+                  setChangePasswordError(null);
+                }}
+                className="text-gray-300 hover:text-white transition"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            {changePasswordError ? (
+              <div className="mb-3">
+                <p className="text-red-400 font-semibold text-sm">Update failed</p>
+                <p className="text-gray-400 text-sm mt-1">{changePasswordError}</p>
+              </div>
+            ) : null}
+
+            <label className="block text-sm text-gray-300 mb-2">New password</label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="w-full bg-gray-700 px-4 py-3 rounded-md outline-none"
+              placeholder="Enter new password"
+              disabled={changePasswordLoading}
+            />
+
+            <div className="flex justify-end gap-3 mt-5">
+              <button
+                type="button"
+                onClick={() => {
+                  if (changePasswordLoading) return;
+                  setChangePasswordOpen(false);
+                  setNewPassword("");
+                  setChangePasswordError(null);
+                }}
+                className="bg-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-600 active:scale-95 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleChangePassword}
+                disabled={changePasswordLoading}
+                className={`bg-blue-600 px-4 py-2 rounded-lg text-sm hover:bg-blue-700 active:scale-95 transition ${
+                  changePasswordLoading ? "opacity-70 cursor-not-allowed" : ""
+                }`}
+              >
+                {changePasswordLoading ? "Saving..." : "Save"}
               </button>
             </div>
           </div>
         </div>
-      </section>
+      ) : null}
 
       {/* ================= DATA & PRIVACY ================= */}
       <section>
