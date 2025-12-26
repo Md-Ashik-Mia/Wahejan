@@ -1,83 +1,199 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useSession } from "next-auth/react";
+import axios from "axios";
+import { adminApi } from "@/lib/http/client";
+import Image from "next/image";
 
-interface TeamMember {
+type SessionWithAccessToken = { accessToken?: string };
+
+function getAccessToken(session: unknown): string | null {
+  const fromSession = (session as SessionWithAccessToken | null)?.accessToken;
+  if (typeof fromSession === "string" && fromSession) return fromSession;
+  if (typeof window !== "undefined") {
+    const fromStorage = localStorage.getItem("access_token");
+    if (fromStorage) return fromStorage;
+  }
+  return null;
+}
+
+type ApiTeamMember = {
+  id?: number;
+  name?: string | null;
+  image?: string | null;
+  role?: string | null;
+  email?: string | null;
+  is_active?: boolean;
+  last_login?: string | null;
+  new_user_added?: number | null;
+  invoices_download?: string | null;
+  payments?: string | null;
+};
+
+type TeamMember = {
   id: number;
   name: string;
+  email: string;
   role: string;
-  status: string;
+  status: "Active" | "Inactive";
   lastLogin: string;
   newUsers: number;
   invoiceDownload: string;
   payments: string;
-  avatar: string;
+  avatarUrl: string | null;
+};
+
+function formatWhen(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString();
 }
+
+function mapApiTeamMember(m: ApiTeamMember): TeamMember {
+  const id = typeof m.id === "number" ? m.id : 0;
+  const name = (m.name ?? "").toString() || "—";
+  const email = (m.email ?? "").toString();
+  const role = (m.role ?? "").toString();
+  const status: "Active" | "Inactive" = m.is_active === true ? "Active" : "Inactive";
+  const lastLogin = formatWhen(m.last_login);
+  const invoiceDownload = formatWhen(m.invoices_download);
+  const payments = formatWhen(m.payments);
+  const newUsers = typeof m.new_user_added === "number" ? m.new_user_added : 0;
+  const avatarUrl = typeof m.image === "string" && m.image ? m.image : null;
+
+  return {
+    id,
+    name,
+    email,
+    role,
+    status,
+    lastLogin,
+    newUsers,
+    invoiceDownload,
+    payments,
+    avatarUrl,
+  };
+}
+
+function getInitials(name: string, email: string): string {
+  const base = name && name !== "—" ? name : email;
+  const parts = base.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "A";
+  const first = parts[0]?.[0] ?? "A";
+  const last = parts.length > 1 ? parts[parts.length - 1]?.[0] : "";
+  return (first + last).toUpperCase();
+}
+
+const passthroughLoader = ({ src }: { src: string }) => src;
 
 export default function TeamMembersPage() {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { data: session, status: sessionStatus } = useSession();
 
-  // Simulated backend fetch (comment out when integrating real API)
   useEffect(() => {
-    const fakeData: TeamMember[] = [
-      {
-        id: 1,
-        name: "John Doe",
-        role: "Owner & CEO",
-        status: "Active",
-        lastLogin: "Today, 09:24 AM",
-        newUsers: 5,
-        invoiceDownload: "Tuesday, 09:24 AM",
-        payments: "Monday, 09:24 AM",
-        avatar: "https://i.pravatar.cc/100?img=1",
-      },
-      {
-        id: 2,
-        name: "Jane Smith",
-        role: "Admin & HR",
-        status: "Active",
-        lastLogin: "Today, 08:45 AM",
-        newUsers: 3,
-        invoiceDownload: "Monday, 11:30 AM",
-        payments: "Sunday, 09:00 AM",
-        avatar: "https://i.pravatar.cc/100?img=2",
-      },
-      {
-        id: 3,
-        name: "Robert Brown",
-        role: "Finance Head",
-        status: "Inactive",
-        lastLogin: "Yesterday, 05:10 PM",
-        newUsers: 2,
-        invoiceDownload: "Friday, 02:00 PM",
-        payments: "Friday, 10:00 AM",
-        avatar: "https://i.pravatar.cc/100?img=3",
-      },
-    ];
+    if (sessionStatus === "loading") return;
 
-    setTeamMembers(fakeData);
-  }, []);
+    const token = getAccessToken(session);
+    if (!token) {
+      setError("Missing access token.");
+      setLoading(false);
+      return;
+    }
+
+    const fetchTeamMembers = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const res = await adminApi.get("/admin/team-members/", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const payload = res.data as unknown;
+        const list: ApiTeamMember[] = Array.isArray(payload)
+          ? (payload as ApiTeamMember[])
+          : Array.isArray((payload as { results?: unknown })?.results)
+          ? (((payload as { results: ApiTeamMember[] }).results ?? []) as ApiTeamMember[])
+          : Array.isArray((payload as { data?: unknown })?.data)
+          ? (((payload as { data: ApiTeamMember[] }).data ?? []) as ApiTeamMember[])
+          : [];
+
+        const mapped = list.map(mapApiTeamMember).filter((m) => m.id !== 0);
+
+        // Show admins only (API already seems admin-only, but keep safe)
+        const admins = mapped.filter((m) => m.role.toLowerCase() === "admin");
+
+        // Active first, then name/email
+        const sorted = [...admins].sort((a, b) => {
+          const aRank = a.status === "Active" ? 0 : 1;
+          const bRank = b.status === "Active" ? 0 : 1;
+          if (aRank !== bRank) return aRank - bRank;
+          const aKey = (a.name === "—" ? a.email : a.name).toLowerCase();
+          const bKey = (b.name === "—" ? b.email : b.name).toLowerCase();
+          return aKey.localeCompare(bKey);
+        });
+
+        setTeamMembers(sorted);
+      } catch (err) {
+        if (axios.isAxiosError(err)) {
+          const code = err.response?.status;
+          setError(code ? `Failed to load team members (${code}).` : "Failed to load team members.");
+        } else {
+          setError("Failed to load team members.");
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTeamMembers();
+  }, [session, sessionStatus]);
+
+  const hasData = useMemo(() => !loading && !error && teamMembers.length > 0, [error, loading, teamMembers.length]);
 
   return (
     <div className="min-h-screen bg-black text-white p-6 space-y-8">
       <h2 className="text-xl font-semibold">Admin Control Center</h2>
       <h3 className="text-lg font-medium">Team Members</h3>
 
+      {loading ? (
+        <p className="text-gray-400">Loading admins...</p>
+      ) : error ? (
+        <p className="text-red-400">{error}</p>
+      ) : null}
+
       <div className="grid md:grid-cols-1 gap-6">
-        {teamMembers.map((member) => (
+        {hasData ? teamMembers.map((member) => (
           <div
             key={member.id}
             className="bg-[#272727]  p-5 rounded-xl shadow-md hover:bg-gray-750 transition-all duration-200"
           >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <img
-                  src={member.avatar}
-                  alt={member.name}
-                  className="w-12 h-12 rounded-full object-cover border border-gray-600"
-                />
+                {member.avatarUrl ? (
+                  <Image
+                    loader={passthroughLoader}
+                    unoptimized
+                    src={member.avatarUrl}
+                    alt={member.name}
+                    width={48}
+                    height={48}
+                    className="w-12 h-12 rounded-full object-cover border border-gray-600"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-full border border-gray-600 bg-black/30 flex items-center justify-center font-semibold text-gray-200">
+                    {getInitials(member.name, member.email)}
+                  </div>
+                )}
                 <div>
                   <p className="font-semibold text-base">{member.name}</p>
-                  <p className="text-gray-400 text-sm">{member.role}</p>
+                  <p className="text-gray-400 text-sm">{member.email}</p>
+                  <p className="text-gray-500 text-xs">Role: {member.role}</p>
                 </div>
               </div>
 
@@ -114,7 +230,9 @@ export default function TeamMembersPage() {
               </div>
             </div>
           </div>
-        ))}
+        )) : !loading && !error ? (
+          <p className="text-gray-400">No admins found.</p>
+        ) : null}
       </div>
     </div>
   );

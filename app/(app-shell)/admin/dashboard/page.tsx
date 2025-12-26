@@ -290,6 +290,7 @@
 
 import { adminApi } from "@/lib/http/client";
 import React, { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import {
   LineChart,
   Line,
@@ -334,15 +335,35 @@ interface DashboardData {
 }
 
 const AdminDashboard: React.FC = () => {
+  const { data: session, status } = useSession();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // 🔹 Fetch admin dashboard only when this page renders
   useEffect(() => {
+    if (status === "loading") return;
+
+    if (!session) {
+      setError("Not authenticated.");
+      setLoading(false);
+      return;
+    }
+
+    const accessToken = (session as unknown as { accessToken?: string }).accessToken;
+    if (!accessToken) {
+      setError("Missing access token in session.");
+      setLoading(false);
+      return;
+    }
+
     const fetchDashboard = async () => {
       try {
-        const response = await adminApi.get<DashboardData>("/admin/dashboard/");
+        const response = await adminApi.get<DashboardData>("/admin/dashboard/", {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
         console.log("Dashboard data:", response.data);
         setData(response.data);
       } catch (err) {
@@ -370,7 +391,7 @@ const AdminDashboard: React.FC = () => {
     };
 
     fetchDashboard();
-  }, []);
+  }, [session, status]);
 
   if (loading) {
     return (

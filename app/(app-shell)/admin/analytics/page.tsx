@@ -1,112 +1,159 @@
 "use client";
-import React, { useState, useEffect } from "react";
-import { DollarSign, MessageCircle, Send, BarChart3, FileText, User } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { BarChart3, DollarSign, MessageCircle, Send } from "lucide-react";
+import { useSession } from "next-auth/react";
+import axios from "axios";
+import { adminApi } from "@/lib/http/client";
+
+type SessionWithAccessToken = { accessToken?: string };
+
+function getAccessToken(session: unknown): string | null {
+  const fromSession = (session as SessionWithAccessToken | null)?.accessToken;
+  if (typeof fromSession === "string" && fromSession) return fromSession;
+  if (typeof window !== "undefined") {
+    const fromStorage = localStorage.getItem("access_token");
+    if (fromStorage) return fromStorage;
+  }
+  return null;
+}
+
+type MetricDelta = {
+  current: number;
+  previous: number;
+};
+
+type PerformanceAnalyticsResponse = {
+  total_message_sent?: Partial<MetricDelta>;
+  total_message_received?: Partial<MetricDelta>;
+  monthly_revenue?: Partial<MetricDelta>;
+  total_revenue?: number;
+  time_scope?: string;
+};
+
+function numberOrZero(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function formatMoney(value: number): string {
+  return `$${value.toLocaleString()}`;
+}
+
+function formatDelta(current: number, previous: number): string {
+  if (previous === 0) {
+    if (current === 0) return "0% from previous";
+    return "+— from previous";
+  }
+  const pct = ((current - previous) / previous) * 100;
+  const sign = pct >= 0 ? "+" : "";
+  return `${sign}${pct.toFixed(1)}% from previous`;
+}
 
 const AnalyticsDashboard = () => {
   const [timeFilter, setTimeFilter] = useState<"today" | "month" | "year">("month");
-  const [stats, setStats] = useState<any>({});
+  const { data: session, status: sessionStatus } = useSession();
+  const [stats, setStats] = useState<PerformanceAnalyticsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Fake backend data simulation
-  const fakeData = {
-    today: {
-      messagesSent: 450,
-      messagesReceived: 389,
-      payments: 14,
-      monthlyRevenue: 720,
-      totalRevenue: 9000,
-      totalCosts: 4200,
-      grossProfit: 4800,
-      arpu: 2.45,
-    },
-    month: {
-      messagesSent: 12450,
-      messagesReceived: 10890,
-      payments: 245,
-      monthlyRevenue: 12450,
-      totalRevenue: 124580,
-      totalCosts: 74580,
-      grossProfit: 24580,
-      arpu: 80.99,
-    },
-    year: {
-      messagesSent: 140000,
-      messagesReceived: 132000,
-      payments: 3100,
-      monthlyRevenue: 210000,
-      totalRevenue: 1400000,
-      totalCosts: 840000,
-      grossProfit: 560000,
-      arpu: 94.5,
-    },
-  };
-
-  // Load fake data based on filter (later replace with API)
-  useEffect(() => {
-    // Example backend call placeholder:
-    // fetch(`/api/analytics?period=${timeFilter}`)
-    //   .then(res => res.json())
-    //   .then(data => setStats(data));
-    setStats(fakeData[timeFilter]);
+  const timeScopeParam = useMemo(() => {
+    // Backend screenshot shows `time_scope: "monthly"`.
+    // We send a best-effort param; backend can ignore it safely.
+    if (timeFilter === "today") return "daily";
+    if (timeFilter === "year") return "yearly";
+    return "monthly";
   }, [timeFilter]);
 
-  const cards = [
-    {
-      label: "Messages Sent",
-      value: stats.messagesSent,
-      color: "text-yellow-400",
-      icon: <Send className="w-6 h-6 text-yellow-400" />,
-      change: "+12% from last month",
-    },
-    {
-      label: "Messages Received",
-      value: stats.messagesReceived,
-      color: "text-green-400",
-      icon: <MessageCircle className="w-6 h-6 text-green-400" />,
-      change: "+8% from last month",
-    },
-    {
-      label: "Payments via Chat",
-      value: stats.payments,
-      color: "text-green-500",
-      icon: <DollarSign className="w-6 h-6 text-green-500" />,
-      change: "+22% from last month",
-    },
-    {
-      label: "Monthly Revenue",
-      value: `$${stats.monthlyRevenue}`,
-      color: "text-pink-500",
-      icon: <BarChart3 className="w-6 h-6 text-pink-500" />,
-      change: "+18% from last month",
-    },
-    {
-      label: "Total Revenue",
-      value: `$${stats.totalRevenue}`,
-      color: "text-yellow-400",
-      icon: <DollarSign className="w-6 h-6 text-yellow-400" />,
-      change: "+12.5% from last month",
-    },
-    {
-      label: "Total Costs",
-      value: `$${stats.totalCosts}`,
-      color: "text-green-400",
-      icon: <FileText className="w-6 h-6 text-green-400" />,
-      change: "-8.2% from last month",
-    },
-    {
-      label: "Gross Profit",
-      value: `$${stats.grossProfit}`,
-      color: "text-blue-400",
-      icon: <BarChart3 className="w-6 h-6 text-blue-400" />,
-      change: "+15.3% from last month",
-    },
-    {
-      label: "ARPU",
-      value: `$${stats.arpu}`,
-      color: "text-cyan-400",
-      icon: <User className="w-6 h-6 text-cyan-400" />,
-      change: "+4.7% from last month",
-    },
-  ];
+  useEffect(() => {
+    if (sessionStatus === "loading") return;
+
+    const token = getAccessToken(session);
+    if (!token) {
+      setError("Missing access token.");
+      setLoading(false);
+      return;
+    }
+
+    const fetchAnalytics = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const res = await adminApi.get<PerformanceAnalyticsResponse>(
+          "/admin/performance-analytics/",
+          {
+            params: { time_scope: timeScopeParam },
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        setStats(res.data ?? null);
+      } catch (err) {
+        if (axios.isAxiosError(err)) {
+          const code = err.response?.status;
+          setError(code ? `Failed to load analytics (${code}).` : "Failed to load analytics.");
+        } else {
+          setError("Failed to load analytics.");
+        }
+        setStats(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAnalytics();
+  }, [session, sessionStatus, timeScopeParam]);
+
+  const messagesSent = numberOrZero(stats?.total_message_sent?.current);
+  const messagesSentPrev = numberOrZero(stats?.total_message_sent?.previous);
+  const messagesReceived = numberOrZero(stats?.total_message_received?.current);
+  const messagesReceivedPrev = numberOrZero(stats?.total_message_received?.previous);
+  const monthlyRevenue = numberOrZero(stats?.monthly_revenue?.current);
+  const monthlyRevenuePrev = numberOrZero(stats?.monthly_revenue?.previous);
+  const totalRevenue = numberOrZero(stats?.total_revenue);
+
+  const cards = useMemo(
+    () => [
+      {
+        label: "Messages Sent",
+        value: messagesSent,
+        color: "text-yellow-400",
+        icon: <Send className="w-6 h-6 text-yellow-400" />,
+        change: formatDelta(messagesSent, messagesSentPrev),
+      },
+      {
+        label: "Messages Received",
+        value: messagesReceived,
+        color: "text-green-400",
+        icon: <MessageCircle className="w-6 h-6 text-green-400" />,
+        change: formatDelta(messagesReceived, messagesReceivedPrev),
+      },
+      {
+        label: "Monthly Revenue",
+        value: formatMoney(monthlyRevenue),
+        color: "text-pink-500",
+        icon: <BarChart3 className="w-6 h-6 text-pink-500" />,
+        change: formatDelta(monthlyRevenue, monthlyRevenuePrev),
+      },
+      {
+        label: "Total Revenue",
+        value: formatMoney(totalRevenue),
+        color: "text-yellow-400",
+        icon: <DollarSign className="w-6 h-6 text-yellow-400" />,
+        change: "Total",
+      },
+    ],
+    [
+      messagesReceived,
+      messagesReceivedPrev,
+      messagesSent,
+      messagesSentPrev,
+      monthlyRevenue,
+      monthlyRevenuePrev,
+      totalRevenue,
+    ]
+  );
 
   return (
     <div className="min-h-screen bg-black text-white p-6 space-y-8">
@@ -147,6 +194,12 @@ const AnalyticsDashboard = () => {
         </div>
       </div>
 
+      {loading ? (
+        <p className="text-gray-400">Loading analytics...</p>
+      ) : error ? (
+        <p className="text-red-400">{error}</p>
+      ) : null}
+
       {/* Statistic Cards */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {cards.map((card, idx) => (
@@ -158,7 +211,7 @@ const AnalyticsDashboard = () => {
               <span className={card.color}>{card.icon}</span>
             </div>
             <p className="text-2xl font-semibold mb-1">
-              {card.value?.toLocaleString?.() || card.value}
+              {typeof card.value === "number" ? card.value.toLocaleString() : card.value}
             </p>
             <p className="text-gray-300 text-sm">{card.label}</p>
             <p
