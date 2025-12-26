@@ -1,4 +1,3 @@
-import { MdDashboard } from "react-icons/md";
 
 export const userNav = [
   { label: "Dashboard", href: "/user/dashboard", icon: "/dashboard.png" },
@@ -10,7 +9,7 @@ export const userNav = [
   {
     label: "Knowledge Base",
     href: "/user/knowledge-base",
-    icon: "/knowledgeBase.png",
+    icon: "/knowledgebase.png",
   },
   {
     label: "Integrations",
