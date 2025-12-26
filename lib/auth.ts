@@ -133,6 +133,32 @@ type AppUser = {
   refreshToken?: string;
 };
 
+function normalizeRole(role: unknown): string {
+  return typeof role === "string" ? role.trim().toLowerCase() : "";
+}
+
+function isTrue(value: unknown): boolean {
+  return value === true || value === "true" || value === 1 || value === "1";
+}
+
+function deriveRoleFromBackendUser(user: unknown): string {
+  if (!user || typeof user !== "object") return "";
+  const u = user as Record<string, unknown>;
+
+  // Prefer explicit role strings.
+  const rawRole = normalizeRole(u.role);
+  if (rawRole) {
+    // Common synonyms
+    if (rawRole === "administrator" || rawRole === "superadmin" || rawRole === "super_admin") return "admin";
+    return rawRole;
+  }
+
+  // Fallback to common Django/DRF style flags.
+  if (isTrue(u.is_admin) || isTrue(u.is_staff) || isTrue(u.is_superuser)) return "admin";
+
+  return "";
+}
+
 function readHeader(req: unknown, headerName: string): string | null {
   if (!req || typeof req !== "object") return null;
   const reqObj = req as Record<string, unknown>;
@@ -230,11 +256,17 @@ export const authOptions: NextAuthOptions = {
             id: String(user.id),
             name: user.name,
             email: user.email,
-            role: user.role,          // "admin" | "user"
-            hasPlan: user.has_plan,   // boolean
+            role: deriveRoleFromBackendUser(user) || "user",
+            hasPlan: Boolean((user as any).has_plan),
             accessToken: access,
             refreshToken: refresh,
           };
+
+          // Helpful during debugging (prints in server terminal only)
+          console.log("[auth] credentials login ok", {
+            email: appUser.email,
+            role: appUser.role,
+          });
 
           return appUser as unknown as User;
         } catch (err) {
@@ -267,10 +299,15 @@ export const authOptions: NextAuthOptions = {
       // First login with credentials
       if (user) {
         const u = user as unknown as Partial<AppUser>;
-        token.role = u.role;
-        token.hasPlan = u.hasPlan;
+        token.role = normalizeRole(u.role);
+        token.hasPlan = Boolean(u.hasPlan);
         token.accessToken = u.accessToken;
         token.refreshToken = u.refreshToken;
+      }
+
+      // Keep role normalized even on subsequent calls.
+      if (typeof token.role === "string") {
+        token.role = normalizeRole(token.role);
       }
 
       // Later you can handle Google/Apple by calling your Python backend here
@@ -291,8 +328,8 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       session.user = {
         ...session.user,
-        role: token.role,
-        hasPlan: token.hasPlan,
+        role: typeof token.role === "string" ? token.role : undefined,
+        hasPlan: Boolean(token.hasPlan),
       } as unknown as typeof session.user;
 
       (session as unknown as { accessToken?: unknown }).accessToken = token.accessToken;

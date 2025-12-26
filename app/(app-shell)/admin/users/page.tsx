@@ -1,6 +1,9 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
 // import { ChevronDown } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { adminApi } from "@/lib/http/client";
+import axios from "axios";
 
 interface User {
   id: number;
@@ -11,62 +14,114 @@ interface User {
   status: "Active" | "Deactive";
 }
 
-const UsersPage: React.FC = () => {
-  // =======================
-  // 🔹 Fake Data (Simulated Backend)
-  // =======================
-  const fakeUsers: User[] = [
-    {
-      id: 1,
-      name: "Jane Cooper",
-      role: "Owner",
-      email: "felicia.reid@example.com",
-      company: "Louis Vuitton",
-      status: "Active",
-    },
-    {
-      id: 2,
-      name: "Wade Warren",
-      role: "Admin",
-      email: "sara.cruz@example.com",
-      company: "The Walt Disney Company",
-      status: "Active",
-    },
-    {
-      id: 3,
-      name: "Jenny Wilson",
-      role: "Agent",
-      email: "nathan.roberts@example.com",
-      company: "Bank of America",
-      status: "Deactive",
-    },
-    {
-      id: 4,
-      name: "Guy Hawkins",
-      role: "Owner",
-      email: "jackson.graham@example.com",
-      company: "The Walt Disney Company",
-      status: "Active",
-    },
-    {
-      id: 5,
-      name: "Cody Fisher",
-      role: "Admin",
-      email: "cody.fisher@example.com",
-      company: "Meta Platforms",
-      status: "Deactive",
-    },
-  ];
+type ApiUser = {
+  id?: number;
+  name?: string | null;
+  username?: string | null;
+  email?: string | null;
+  role?: string | null;
+  is_active?: boolean;
+  company_name?: string | null;
+  company?: { name?: string | null } | string | null;
+};
 
+function normalizeStatus(isActive: unknown): "Active" | "Deactive" {
+  return isActive === true ? "Active" : "Deactive";
+}
+
+function getCompanyName(u: ApiUser): string {
+  const companyName = (u.company_name ?? "").toString();
+  if (companyName) return companyName;
+
+  const company = u.company;
+  if (!company) return "";
+  if (typeof company === "string") return company;
+  if (typeof company === "object" && typeof company.name === "string") return company.name;
+  return "";
+}
+
+function mapApiUser(u: ApiUser): User {
+  const id = typeof u.id === "number" ? u.id : 0;
+  const name = (u.name ?? u.username ?? "").toString();
+  const email = (u.email ?? "").toString();
+  const role = (u.role ?? "").toString();
+  const company = getCompanyName(u);
+  const status = normalizeStatus(u.is_active);
+  return { id, name, role, email, company, status };
+}
+
+const UsersPage: React.FC = () => {
   // =======================
   // 🔹 State Management
   // =======================
-  const [users, setUsers] = useState<User[]>(fakeUsers);
+  const { data: session, status: sessionStatus } = useSession();
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [sortStatus, setSortStatus] = useState<"All" | "Active" | "Deactive">(
     "All"
   );
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // =======================
+  // 🔹 Fetch Users from Backend
+  // =======================
+  useEffect(() => {
+    if (sessionStatus === "loading") return;
+
+    const accessToken = (session as unknown as { accessToken?: string } | null)?.accessToken;
+    if (!accessToken) {
+      setError("Missing access token.");
+      setLoading(false);
+      return;
+    }
+
+    const fetchUsers = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const res = await adminApi.get("/admin/users/", {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+
+        const payload = res.data;
+        const list: ApiUser[] = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload?.results)
+          ? payload.results
+          : Array.isArray(payload?.data)
+          ? payload.data
+          : [];
+
+        const mapped = list.map(mapApiUser).filter((u) => u.id !== 0);
+        setAllUsers(mapped);
+
+        // apply current filter
+        if (sortStatus === "All") {
+          setUsers(mapped);
+        } else {
+          setUsers(mapped.filter((u) => u.status === sortStatus));
+        }
+      } catch (err) {
+        if (axios.isAxiosError(err)) {
+          const code = err.response?.status;
+          setError(code ? `Failed to load users (${code}).` : "Failed to load users.");
+        } else {
+          setError("Failed to load users.");
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, sessionStatus]);
 
   // =======================
   // 🔹 Sorting Handler
@@ -76,9 +131,9 @@ const UsersPage: React.FC = () => {
     setIsDropdownOpen(false); // auto close dropdown
 
     if (status === "All") {
-      setUsers(fakeUsers);
+      setUsers(allUsers);
     } else {
-      const filtered = fakeUsers.filter((user) => user.status === status);
+      const filtered = allUsers.filter((user) => user.status === status);
       setUsers(filtered);
     }
   };
@@ -159,6 +214,12 @@ const UsersPage: React.FC = () => {
           </div>
         </div>
 
+        {loading ? (
+          <p className="text-gray-400 py-6">Loading users...</p>
+        ) : error ? (
+          <p className="text-red-400 py-6">{error}</p>
+        ) : null}
+
         {/* ================== Table ================== */}
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-sm text-left">
@@ -197,7 +258,7 @@ const UsersPage: React.FC = () => {
             </tbody>
           </table>
 
-          {users.length === 0 && (
+          {!loading && !error && users.length === 0 && (
             <p className="text-center text-gray-400 py-6">
               No users found for selected filter.
             </p>

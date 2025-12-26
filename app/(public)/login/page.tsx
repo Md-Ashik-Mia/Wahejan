@@ -116,6 +116,18 @@ type ClientSession = {
   accessToken?: string;
 } | null;
 
+async function waitForSessionReady(maxMs = 2000, intervalMs = 100): Promise<ClientSession> {
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    const session = (await getSession()) as ClientSession;
+    const role = session?.user?.role;
+    const accessToken = session?.accessToken;
+    if (role && accessToken) return session;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  return (await getSession()) as ClientSession;
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -155,9 +167,9 @@ export default function LoginPage() {
       return;
     }
 
-    // 🔐 Get session from NextAuth
-    const session = (await getSession()) as ClientSession;
-    const role = session?.user?.role;
+    // 🔐 Wait for session to be ready (role + accessToken)
+    const session = await waitForSessionReady();
+    const role = session?.user?.role?.trim().toLowerCase();
     const hasPlan = session?.user?.hasPlan;
 
     // 🔑 Save accessToken to localStorage for axios interceptors
@@ -168,7 +180,9 @@ export default function LoginPage() {
 
     // 🔀 Redirect logic (plan page later)
     if (role === "admin") {
-      router.push("/admin/dashboard");
+      // Full navigation avoids edge cases where middleware sees a stale token
+      // during client-side transitions right after sign-in.
+      window.location.href = "/admin/dashboard";
     } else if (role === "user" && hasPlan) {
       router.push("/user/dashboard");
     } else if (role === "user" && !hasPlan) {

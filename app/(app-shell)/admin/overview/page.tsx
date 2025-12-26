@@ -3,6 +3,9 @@ import { Search } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { BsCheckCircleFill, BsExclamationCircleFill, BsXCircleFill } from "react-icons/bs";
 import { FaFacebook, FaInstagram, FaWhatsapp } from "react-icons/fa";
+import { useSession } from "next-auth/react";
+import axios from "axios";
+import { adminApi } from "@/lib/http/client";
 
 interface Channel {
   name: string;
@@ -19,75 +22,190 @@ interface Company {
   channels: Channel[];
 }
 
+type SessionWithAccessToken = { accessToken?: string };
+
+function getAccessToken(session: unknown): string | null {
+  const fromSession = (session as SessionWithAccessToken | null)?.accessToken;
+  if (typeof fromSession === "string" && fromSession) return fromSession;
+  if (typeof window !== "undefined") {
+    const fromStorage = localStorage.getItem("access_token");
+    if (fromStorage) return fromStorage;
+  }
+  return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+type ApiChannel = {
+  id?: number;
+  status?: string | null;
+  last_used?: string | null;
+  messages_today?: number | null;
+};
+
+type ApiCompany = {
+  id?: number;
+  name?: string | null;
+  status_message?: string | null;
+  whatsapp?: ApiChannel | null;
+  facebook?: ApiChannel | null;
+  instagram?: ApiChannel | null;
+};
+
+type CompanyOverviewResponse = {
+  total_channels?: unknown;
+  online_channels?: unknown;
+  offline_channels?: unknown;
+  warning_channels?: unknown;
+  companies?: unknown;
+};
+
+function firstNumber(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (Array.isArray(value) && typeof value[0] === "number" && Number.isFinite(value[0])) {
+    return value[0];
+  }
+  return 0;
+}
+
+function normalizeStatus(raw: unknown): "Online" | "Offline" | "Warning" {
+  const s = typeof raw === "string" ? raw.toLowerCase() : "";
+  if (s.includes("warn")) return "Warning";
+  if (s.includes("off")) return "Offline";
+  if (s.includes("on")) return "Online";
+  // fallback when backend sends custom strings like "sample status"
+  return "Online";
+}
+
+function formatLastUsed(raw: unknown): string {
+  if (typeof raw !== "string" || !raw) return "—";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleString();
+}
+
+function mapApiChannel(kind: "whatsapp" | "facebook" | "instagram", ch: ApiChannel): Channel {
+  const messagesToday = typeof ch.messages_today === "number" ? ch.messages_today : 0;
+  const lastUsage = formatLastUsed(ch.last_used);
+  const status = normalizeStatus(ch.status);
+
+  if (kind === "whatsapp") {
+    return {
+      name: "WhatsApp Business",
+      icon: <FaWhatsapp className="text-green-500 text-lg" />,
+      status,
+      lastUsage,
+      messagesToday,
+    };
+  }
+
+  if (kind === "instagram") {
+    return {
+      name: "Instagram",
+      icon: <FaInstagram className="text-pink-500 text-lg" />,
+      status,
+      lastUsage,
+      messagesToday,
+    };
+  }
+
+  return {
+    name: "Facebook",
+    icon: <FaFacebook className="text-blue-500 text-lg" />,
+    status,
+    lastUsage,
+    messagesToday,
+  };
+}
+
 export default function ChannelDashboard() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [filteredCompanies, setFilteredCompanies] = useState<Company[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [counts, setCounts] = useState({ online: 0, offline: 0, warning: 0, total: 0 });
+
+  const { data: session, status: sessionStatus } = useSession();
 
   useEffect(() => {
-    // Simulate backend data fetching
-    const fakeData: Company[] = [
-      {
-        id: 1,
-        name: "TechCorp Inc.",
-        alert: "All Channels Online",
-        channels: [
-          {
-            name: "WhatsApp Business",
-            icon: <FaWhatsapp className="text-green-500 text-lg" />,
-            status: "Online",
-            lastUsage: "Just now",
-            messagesToday: 147,
-          },
-          {
-            name: "Instagram",
-            icon: <FaInstagram className="text-pink-500 text-lg" />,
-            status: "Online",
-            lastUsage: "Just now",
-            messagesToday: 230,
-          },
-          {
-            name: "Facebook",
-            icon: <FaFacebook className="text-blue-500 text-lg" />,
-            status: "Online",
-            lastUsage: "Just now",
-            messagesToday: 185,
-          },
-        ],
-      },
-      {
-        id: 2,
-        name: "AlfaCorp Inc.",
-        alert: "2 Channel Warning",
-        channels: [
-          {
-            name: "WhatsApp Business",
-            icon: <FaWhatsapp className="text-green-500 text-lg" />,
-            status: "Online",
-            lastUsage: "Just now",
-            messagesToday: 147,
-          },
-          {
-            name: "Instagram",
-            icon: <FaInstagram className="text-pink-500 text-lg" />,
-            status: "Warning",
-            lastUsage: "2 hrs ago",
-            messagesToday: 120,
-          },
-          {
-            name: "Facebook",
-            icon: <FaFacebook className="text-blue-500 text-lg" />,
-            status: "Offline",
-            lastUsage: "1 hr ago",
-            messagesToday: 98,
-          },
-        ],
-      },
-    ];
+    if (sessionStatus === "loading") return;
 
-    setCompanies(fakeData);
-    setFilteredCompanies(fakeData);
-  }, []);
+    const token = getAccessToken(session);
+    if (!token) {
+      setError("Missing access token.");
+      setLoading(false);
+      return;
+    }
+
+    const fetchOverview = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const res = await adminApi.get<CompanyOverviewResponse>(
+          "/admin/company-overview/",
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        const data: CompanyOverviewResponse = res.data ?? {};
+        const nextCounts = {
+          total: firstNumber(data.total_channels),
+          online: firstNumber(data.online_channels),
+          offline: firstNumber(data.offline_channels),
+          warning: firstNumber(data.warning_channels),
+        };
+        setCounts(nextCounts);
+
+        const rawCompanies = data.companies;
+        const list: ApiCompany[] = Array.isArray(rawCompanies)
+          ? (rawCompanies as ApiCompany[])
+          : [];
+
+        const mapped: Company[] = list
+          .map((c): Company | null => {
+            const id = typeof c.id === "number" ? c.id : 0;
+            if (!id) return null;
+            const name = (c.name ?? "").toString().trim() || `Company #${id}`;
+            const alert = (c.status_message ?? "").toString();
+
+            const channels: Channel[] = [];
+            if (c.whatsapp && isRecord(c.whatsapp)) {
+              channels.push(mapApiChannel("whatsapp", c.whatsapp));
+            }
+            if (c.instagram && isRecord(c.instagram)) {
+              channels.push(mapApiChannel("instagram", c.instagram));
+            }
+            if (c.facebook && isRecord(c.facebook)) {
+              channels.push(mapApiChannel("facebook", c.facebook));
+            }
+
+            return { id, name, alert, channels };
+          })
+          .filter((x): x is Company => x !== null);
+
+        setCompanies(mapped);
+        setFilteredCompanies(mapped);
+      } catch (err) {
+        if (axios.isAxiosError(err)) {
+          const code = err.response?.status;
+          setError(code ? `Failed to load overview (${code}).` : "Failed to load overview.");
+        } else {
+          setError("Failed to load overview.");
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchOverview();
+  }, [session, sessionStatus]);
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.toLowerCase();
@@ -102,25 +220,17 @@ export default function ChannelDashboard() {
     }
   };
 
-  const stats = {
-    online: filteredCompanies.reduce(
-      (acc, c) => acc + c.channels.filter((ch) => ch.status === "Online").length,
-      0
-    ),
-    offline: filteredCompanies.reduce(
-      (acc, c) => acc + c.channels.filter((ch) => ch.status === "Offline").length,
-      0
-    ),
-    warning: filteredCompanies.reduce(
-      (acc, c) => acc + c.channels.filter((ch) => ch.status === "Warning").length,
-      0
-    ),
-    total: filteredCompanies.reduce((acc, c) => acc + c.channels.length, 0),
-  };
+  const stats = counts;
 
   return (
     <div className="min-h-screen bg-black text-white p-6 space-y-10">
       <h2 className="text-xl font-semibold">Admin Control Center</h2>
+
+      {loading ? (
+        <p className="text-gray-400">Loading overview...</p>
+      ) : error ? (
+        <p className="text-red-400">{error}</p>
+      ) : null}
 
       {/* Search */}
       <div className="flex items-center bg-[#272727] rounded-md p-2 w-full max-w-sm">
@@ -201,36 +311,44 @@ export default function ChannelDashboard() {
 
             {/* Channel Info */}
             <div className="space-y-3">
-              {company.channels.map((ch, idx) => (
-                <div
-                  key={idx}
-                  className="flex justify-between items-center border-b border-gray-700 pb-2"
-                >
-                  <div>
-                    <div className="flex items-center gap-2 font-medium">
-                      {ch.icon}
-                      <span>{ch.name}</span>
-                    </div>
-                    <p className="text-gray-400 text-xs">Last Usage: {ch.lastUsage}</p>
-                    <p className="text-gray-400 text-xs">Messages Today: {ch.messagesToday}</p>
-                  </div>
-
-                  <p
-                    className={`text-sm font-medium ${
-                      ch.status === "Online"
-                        ? "text-green-400"
-                        : ch.status === "Warning"
-                        ? "text-orange-400"
-                        : "text-red-400"
-                    }`}
+              {company.channels.length === 0 ? (
+                <p className="text-gray-400 text-sm">No channels connected.</p>
+              ) : (
+                company.channels.map((ch, idx) => (
+                  <div
+                    key={idx}
+                    className="flex justify-between items-center border-b border-gray-700 pb-2"
                   >
-                    {ch.status}
-                  </p>
-                </div>
-              ))}
+                    <div>
+                      <div className="flex items-center gap-2 font-medium">
+                        {ch.icon}
+                        <span>{ch.name}</span>
+                      </div>
+                      <p className="text-gray-400 text-xs">Last Usage: {ch.lastUsage}</p>
+                      <p className="text-gray-400 text-xs">Messages Today: {ch.messagesToday}</p>
+                    </div>
+
+                    <p
+                      className={`text-sm font-medium ${
+                        ch.status === "Online"
+                          ? "text-green-400"
+                          : ch.status === "Warning"
+                          ? "text-orange-400"
+                          : "text-red-400"
+                      }`}
+                    >
+                      {ch.status}
+                    </p>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         ))}
+
+        {!loading && !error && filteredCompanies.length === 0 && (
+          <p className="text-gray-400">No companies found.</p>
+        )}
       </div>
     </div>
   );

@@ -96,12 +96,15 @@ function attachAuth(
   if (typeof window !== "undefined") {
     const token = localStorage.getItem("access_token"); // set after login
     if (token) {
+      if (!config.headers) {
+        config.headers = new AxiosHeaders();
+      }
+
       const headers = config.headers;
       if (headers instanceof AxiosHeaders) {
         headers.set("Authorization", `Bearer ${token}`);
       } else {
-        (headers as Record<string, string | undefined>)["Authorization"] =
-          `Bearer ${token}`;
+        (headers as Record<string, string | undefined>)["Authorization"] = `Bearer ${token}`;
       }
     }
   }
@@ -176,9 +179,7 @@ userApi.interceptors.response.use(
 adminApi.interceptors.response.use(
   (r) => r,
   (err) => {
-    if (err.response?.status === 403 && typeof window !== "undefined") {
-      window.location.href = "/user/dashboard";
-    } else if (err.response?.status === 401 && typeof window !== "undefined") {
+    if (err.response?.status === 401 && typeof window !== "undefined") {
       window.location.href = "/login";
     }
     return Promise.reject(err);
