@@ -2,6 +2,7 @@
 
 import { userApi } from "@/lib/http/client";
 import { useQuery } from "@tanstack/react-query";
+import axios from "axios";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AiOutlineMessage } from "react-icons/ai";
 import { FaRegCalendarPlus } from "react-icons/fa";
@@ -61,6 +62,18 @@ type AlertMessage = {
 };
 
 const ALERTS_WS_BASE = "wss://ape-in-eft.ngrok-free.app/ws/alerts/";
+const ALERTS_API_ENDPOINTS = ["/alerts/", "/alerts", "/api/alerts/", "/api/alerts"] as const;
+
+function extractList(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  const p = payload as Record<string, unknown>;
+  const candidates = [p.results, p.data, p.list];
+  for (const c of candidates) {
+    if (Array.isArray(c)) return c;
+  }
+  return [];
+}
 
 function normalizeAlertMessage(raw: unknown): AlertMessage | null {
   if (!raw || typeof raw !== "object") return null;
@@ -76,6 +89,22 @@ function normalizeAlertMessage(raw: unknown): AlertMessage | null {
   const is_read = typeof r.is_read === "boolean" ? r.is_read : false;
 
   return { id, title, subtitle, time, type, is_read };
+}
+
+function mergeAlerts(existing: AlertMessage[], incoming: AlertMessage[]): AlertMessage[] {
+  const byId = new Map<number, AlertMessage>();
+  for (const a of existing) byId.set(a.id, a);
+  for (const a of incoming) byId.set(a.id, a);
+
+  const merged = Array.from(byId.values());
+  merged.sort((a, b) => {
+    const at = a.time ? Date.parse(a.time) : NaN;
+    const bt = b.time ? Date.parse(b.time) : NaN;
+    if (!Number.isNaN(at) && !Number.isNaN(bt)) return bt - at;
+    return b.id - a.id;
+  });
+
+  return merged.slice(0, 50);
 }
 
 // Map channel keys to display names
@@ -142,6 +171,8 @@ function Card({
 
 export default function Dashboard() {
   const [alerts, setAlerts] = useState<AlertMessage[]>([]);
+  const [alertsLoading, setAlertsLoading] = useState(false);
+  const [alertsError, setAlertsError] = useState<string | null>(null);
   const [alertsStatus, setAlertsStatus] = useState<
     "connecting" | "connected" | "disconnected" | "error"
   >("disconnected");
@@ -153,6 +184,51 @@ export default function Dashboard() {
     () => alerts.reduce((acc, a) => acc + (a.is_read ? 0 : 1), 0),
     [alerts]
   );
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadInitialAlerts = async () => {
+      setAlertsLoading(true);
+      setAlertsError(null);
+
+      let lastError: unknown = null;
+      for (const endpoint of ALERTS_API_ENDPOINTS) {
+        try {
+          const res = await userApi.get(endpoint);
+          const list = extractList(res.data)
+            .map(normalizeAlertMessage)
+            .filter((a): a is AlertMessage => Boolean(a));
+
+          if (!mounted) return;
+          setAlerts((prev) => mergeAlerts(prev, list));
+          setAlertsLoading(false);
+          return;
+        } catch (e: unknown) {
+          lastError = e;
+          // Try next endpoint on 404; otherwise stop.
+          if (axios.isAxiosError(e)) {
+            const status = e.response?.status;
+            if (status && status !== 404) break;
+          } else {
+            break;
+          }
+        }
+      }
+
+      if (!mounted) return;
+      setAlertsLoading(false);
+      setAlertsError("Failed to load alerts");
+      // Keep socket alive even if REST fails
+      void lastError;
+    };
+
+    void loadInitialAlerts();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     let stopped = false;
@@ -201,9 +277,7 @@ export default function Dashboard() {
           if (!msg) return;
 
           setAlerts((prev) => {
-            const exists = prev.some((a) => a.id === msg.id);
-            const next = exists ? prev.map((a) => (a.id === msg.id ? msg : a)) : [msg, ...prev];
-            return next.slice(0, 50);
+            return mergeAlerts(prev, [msg]);
           });
         } catch {
           // ignore malformed messages
@@ -274,7 +348,6 @@ export default function Dashboard() {
   const totalPayments = data.today_payments.total;
   const paymentCount = data.today_payments.list.length; // or maybe just total cost
   const appointmentsCount = data.today_meetings.count;
-  const remainingAppointments = data.today_meetings.remaining;
   const openChats = data.open_chat;
 
   return (
@@ -407,11 +480,15 @@ export default function Dashboard() {
           </Badge>
         </div>
         <ul className="px-4 py-3 text-sm text-gray-300 space-y-2">
-          {alerts.length === 0 ? (
+          {alertsError ? (
+            <li className="text-red-300">{alertsError}</li>
+          ) : alertsLoading && alerts.length === 0 ? (
+            <li className="text-gray-400">Loading alerts...</li>
+          ) : alerts.length === 0 ? (
             <li className="text-gray-400">
               {alertsStatus === "connected"
-                ? "Waiting for real-time updates..."
-                : "Connect to receive alerts."}
+                ? "No alerts yet. Waiting for real-time updates..."
+                : "No alerts yet."}
             </li>
           ) : (
             alerts.map((a) => {

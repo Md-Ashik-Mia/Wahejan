@@ -40,11 +40,15 @@
 
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { api } from "@/lib/http/client";
+import { signIn } from "next-auth/react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { FaGoogle } from "react-icons/fa";
 
 export default function SignupPage() {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const router = useRouter();
@@ -52,7 +56,7 @@ export default function SignupPage() {
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
     try {
-      const res = await api.post("/auth/users/", { email, password });
+      const res = await api.post("/auth/users/", { name, email, password });
       if (res.status === 201 || res.status === 200) {
         // Save email for OTP step
         localStorage.setItem("signup_email", email);
@@ -71,6 +75,12 @@ export default function SignupPage() {
       <h1 className="text-2xl font-bold mb-6">Create Account</h1>
       <form onSubmit={handleSignup} className="w-[350px] space-y-3">
         <input
+          type="text"
+          placeholder="Enter your name"
+          className="w-full bg-[#1e2837] px-4 py-3 rounded-md outline-none"
+          onChange={(e) => setName(e.target.value)}
+        />
+        <input
           type="email"
           placeholder="Enter your email"
           className="w-full bg-[#1e2837] px-4 py-3 rounded-md outline-none"
@@ -87,6 +97,22 @@ export default function SignupPage() {
           className="w-full bg-[#0B57D0] hover:bg-[#0843a8] py-3 rounded-md font-semibold"
         >
           Sign Up
+        </button>
+
+        <p className="text-center text-sm text-white/80">
+          Already have an account?{" "}
+          <Link href="/login" className="underline underline-offset-4 hover:text-white">
+            Log in
+          </Link>
+        </p>
+
+        <button
+          type="button"
+          onClick={() => signIn("google", { callbackUrl: "/login" })}
+          className="flex items-center justify-center gap-2 bg-white text-black px-4 py-2 rounded-md w-full"
+        >
+          <FaGoogle className="text-lg" aria-hidden="true" />
+          Continue with Google
         </button>
       </form>
     </div>

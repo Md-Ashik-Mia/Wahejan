@@ -276,17 +276,28 @@ export const authOptions: NextAuthOptions = {
       },
     }),
 
-    // 2) Google OAuth — backend must support it for real use
+    // 2) Google OAuth -> exchange Google access_token with your backend
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      authorization: {
+        params: {
+          prompt: "consent",
+          access_type: "offline",
+          response_type: "code",
+        },
+      },
     }),
 
-    // 3) Apple OAuth — same note as above
-    AppleProvider({
-      clientId: process.env.APPLE_CLIENT_ID!,
-      clientSecret: process.env.APPLE_CLIENT_SECRET!,
-    }),
+    // 3) Apple OAuth (optional)
+    ...(process.env.APPLE_CLIENT_ID && process.env.APPLE_CLIENT_SECRET
+      ? [
+          AppleProvider({
+            clientId: process.env.APPLE_CLIENT_ID,
+            clientSecret: process.env.APPLE_CLIENT_SECRET,
+          }),
+        ]
+      : []),
   ],
 
   session: {
@@ -295,7 +306,7 @@ export const authOptions: NextAuthOptions = {
 
   callbacks: {
     // Called whenever JWT is created/updated
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       // First login with credentials
       if (user) {
         const u = user as unknown as Partial<AppUser>;
@@ -310,16 +321,36 @@ export const authOptions: NextAuthOptions = {
         token.role = normalizeRole(token.role);
       }
 
-      // Later you can handle Google/Apple by calling your Python backend here
-      // if (account?.provider === "google" && account.access_token) {
-      //   const { data } = await api.post("/social/google-login/", {
-      //     access_token: account.access_token,
-      //   });
-      //   token.role = data.user.role;
-      //   token.hasPlan = data.user.has_plan;
-      //   token.accessToken = data.access;
-      //   token.refreshToken = data.refresh;
-      // }
+      // Google OAuth: exchange Google access_token for backend access/refresh tokens.
+      if (account?.provider === "google" && account.access_token) {
+        try {
+          const { data } = await api.post("/auth/google/login/", {
+            access_token: account.access_token,
+          });
+
+          const backendUser = (data as any)?.user;
+          const access = (data as any)?.access ?? (data as any)?.access_token;
+          const refresh = (data as any)?.refresh ?? (data as any)?.refresh_token;
+
+          if (access) {
+            token.accessToken = access;
+          }
+          if (refresh) {
+            token.refreshToken = refresh;
+          }
+
+          const roleFromBackend = deriveRoleFromBackendUser(backendUser);
+          token.role = normalizeRole(roleFromBackend || (token as any).role || "user");
+          token.hasPlan = Boolean((backendUser as any)?.has_plan);
+
+          console.log("[auth] google login ok", {
+            email: (backendUser as any)?.email,
+            role: token.role,
+          });
+        } catch (err) {
+          console.error("[auth] google token exchange failed", err);
+        }
+      }
 
       return token;
     },
@@ -333,6 +364,7 @@ export const authOptions: NextAuthOptions = {
       } as unknown as typeof session.user;
 
       (session as unknown as { accessToken?: unknown }).accessToken = token.accessToken;
+      (session as unknown as { refreshToken?: unknown }).refreshToken = (token as any).refreshToken;
       return session;
     },
 

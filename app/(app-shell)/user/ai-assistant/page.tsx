@@ -1514,29 +1514,18 @@ const AIAssistantDashboard: React.FC = () => {
             onChange={(e) => handleTonePresetChange(e.target.value)}
             disabled={toneSaving || companyLoading}
           >
+
+
+            {/* '',
+  '',
+  '',
+  '',
+  '', */}
+            <option value="Formal">Formal</option>
             <option value="standard">Standard</option>
-            <option value="normal">Normal</option>
             <option value="friendly">Friendly</option>
-            <option value="professional">Professional</option>
-            <option value="corporate">Corporate</option>
-            <option value="casual">Casual</option>
-            <option value="supportive">Supportive</option>
-            <option value="empathetic">Empathetic</option>
-            <option value="technical">Technical</option>
-            <option value="expert">Expert</option>
-            <option value="playful">Playful</option>
-            <option value="humorous">Humorous</option>
-            <option value="minimal">Minimal</option>
-            <option value="direct">Direct</option>
-            <option value="educational">Educational</option>
-            <option value="tutor">Tutor</option>
-            <option value="sales">Sales</option>
-            <option value="persuasive">Persuasive</option>
-            <option value="creative">Creative</option>
-            <option value="storytelling">Storytelling</option>
-            <option value="motivational">Motivational</option>
-            <option value="coach">Coach</option>
-            <option value="flirty">Flirty</option>
+            <option value="polite">Polite</option>
+            <option value="Humorous">Humorous</option>
           </select>
         </div>
 

@@ -17,6 +17,74 @@ type KnowledgeCategoryCounts = {
   services: number;
 };
 
+type KnowledgeBaseHealth = {
+  score: number;
+  summary: string;
+  missingTopics: string[];
+};
+
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function toTitleLabel(value: string): string {
+  const v = value.trim();
+  if (!v) return v;
+
+  const known: Record<string, string> = {
+    companyinfo: "Company Info",
+    company_info: "Company Info",
+    openinghours: "Opening Hours",
+    opening_hours: "Opening Hours",
+    refundpolicy: "Refund Policy",
+    refund_policy: "Refund Policy",
+    deliverytimes: "Delivery Times",
+    delivery_times: "Delivery Times",
+    faqs: "FAQs",
+  };
+
+  const key = v.replace(/\s+/g, "").toLowerCase();
+  if (known[key]) return known[key];
+
+  const snake = v.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/_/g, " ");
+  return snake
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => (w.length ? w[0]!.toUpperCase() + w.slice(1) : w))
+    .join(" ");
+}
+
+function normalizeKnowledgeBaseHealth(raw: unknown): KnowledgeBaseHealth {
+  const root: UnknownRecord = isRecord(raw) ? raw : {};
+  const healthContainer = (root.health ?? root.heath) as unknown;
+  const health: UnknownRecord = isRecord(healthContainer) ? healthContainer : {};
+
+  const dataHealthContainer = (health.dataHealth ?? health.data_health) as unknown;
+  const dataHealth: UnknownRecord = isRecord(dataHealthContainer) ? dataHealthContainer : {};
+
+  const scoreRaw = dataHealth.score;
+  const summaryRaw = dataHealth.summary;
+  const score = typeof scoreRaw === "number" ? clampPercent(scoreRaw) : 0;
+  const summary = typeof summaryRaw === "string" ? summaryRaw : "";
+
+  const missingRaw =
+    (health.missingOrSuggestedData ??
+      health.missing_or_suggested_data ??
+      dataHealth.enrichmentSuggestions ??
+      dataHealth.enrichment_suggestions) as unknown;
+
+  const missingList = Array.isArray(missingRaw)
+    ? missingRaw.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+    : [];
+
+  return {
+    score,
+    summary,
+    missingTopics: missingList.map(toTitleLabel),
+  };
+}
+
 function normalizeKnowledgeCategoryCounts(raw: unknown): KnowledgeCategoryCounts {
   const r: UnknownRecord = isRecord(raw) ? raw : {};
 
@@ -93,9 +161,11 @@ function activityEmoji(icon: string, activityType: string): string {
 }
 
 const AIKnowledgeBase: React.FC = () => {
-  // Fake Data
-  const knowledgeHealth = 70;
-  const missingTopics = ['Service Prices', 'Refund Policy', 'Delivery Times'];
+  const [kbHealth, setKbHealth] = useState<KnowledgeBaseHealth>({
+    score: 0,
+    summary: "",
+    missingTopics: [],
+  });
 
   const [categoryCounts, setCategoryCounts] = useState<KnowledgeCategoryCounts>({
     opening_hours: 0,
@@ -140,6 +210,7 @@ const AIKnowledgeBase: React.FC = () => {
       if (!res) throw lastError ?? new Error("Failed to load knowledge categories");
 
       setCategoryCounts(normalizeKnowledgeCategoryCounts(res.data));
+      setKbHealth(normalizeKnowledgeBaseHealth(res.data));
     } catch (e: unknown) {
       setCategoryError(getErrorMessage(e, "Failed to load knowledge categories"));
     } finally {
@@ -230,7 +301,7 @@ const AIKnowledgeBase: React.FC = () => {
               <path
                 className="text-blue-500"
                 strokeWidth="4"
-                strokeDasharray={`${knowledgeHealth}, 100`}
+                strokeDasharray={`${kbHealth.score}, 100`}
                 strokeLinecap="round"
                 stroke="currentColor"
                 fill="none"
@@ -238,17 +309,31 @@ const AIKnowledgeBase: React.FC = () => {
               />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center text-xl font-semibold">
-              {knowledgeHealth}%
+              {categoryLoading ? "…" : `${kbHealth.score}%`}
             </div>
           </div>
           <div>
             <h3 className="text-lg font-semibold">Knowledge Base Health</h3>
-            <p className="text-gray-400">Your AI knowledge is {knowledgeHealth}% complete. Add missing information to improve customer interactions.</p>
+            <p className="text-gray-400">
+              {categoryLoading
+                ? "Loading knowledge base health…"
+                : kbHealth.summary
+                ? kbHealth.summary
+                : `Your AI knowledge is ${kbHealth.score}% complete. Add missing information to improve customer interactions.`}
+            </p>
             <div className="flex flex-wrap gap-2 mt-2">
-              {missingTopics.map((topic, idx) => (
-                <span key={idx} className="bg-red-700 px-3 py-1 rounded-full text-sm">{topic}</span>
-              ))}
+              {!categoryLoading && kbHealth.missingTopics.length > 0
+                ? kbHealth.missingTopics.map((topic, idx) => (
+                    <span key={`${topic}-${idx}`} className="bg-red-700 px-3 py-1 rounded-full text-sm">
+                      {topic}
+                    </span>
+                  ))
+                : null}
             </div>
+
+            {categoryError ? (
+              <p className="text-sm text-red-400 mt-2">{categoryError}</p>
+            ) : null}
           </div>
         </div>
          <Link href="/user/ai-assistant#knowledge-base">

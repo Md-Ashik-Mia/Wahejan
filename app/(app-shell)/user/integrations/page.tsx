@@ -15,10 +15,13 @@ type Platform = "facebook" | "instagram" | "whatsapp" | "calendar" | "crm";
 // so endpoints here must NOT start with `/api`.
 const CHAT_PROFILE_ENDPOINTS = ["/chat/chat-profile/", "/chat/chat-profile"];
 
-const CONNECT_ENDPOINT_BY_PLATFORM: Partial<Record<Platform, string>> = {
-  facebook: "/connect/fb/",
-  instagram: "/connect/ig/",
+const CONNECT_ENDPOINTS_BY_PLATFORM: Partial<Record<Platform, string[]>> = {
+  // Backend examples show /api/connect/...; include both forms to be safe.
+  facebook: ["/connect/fb/", "/connect/fb", "/api/connect/fb/", "/api/connect/fb"],
+  instagram: ["/connect/ig/", "/connect/ig", "/api/connect/ig/", "/api/connect/ig"],
 };
+
+const NOT_ACTIVE_SENTINEL = "__NOT_ACTIVE__";
 
 function getApiErrorMessage(error: unknown, fallback: string): string {
   if (axios.isAxiosError(error)) {
@@ -142,7 +145,14 @@ const IntegrationPage: React.FC = () => {
 
       setActiveByPlatform((s) => ({ ...s, [platform]: active }));
     } catch (e: unknown) {
-      setPlatformError(platform, getApiErrorMessage(e, "Failed to load status"));
+      // Backend returns 404 when a chat profile doesn't exist yet for that platform.
+      // Treat it as a clean "Not active" state instead of an error.
+      if (axios.isAxiosError(e) && e.response?.status === 404) {
+        setActiveByPlatform((s) => ({ ...s, [platform]: false }));
+        setPlatformError(platform, NOT_ACTIVE_SENTINEL);
+      } else {
+        setPlatformError(platform, getApiErrorMessage(e, "Failed to load status"));
+      }
     } finally {
       setPlatformLoading(platform, false);
     }
@@ -166,10 +176,18 @@ const IntegrationPage: React.FC = () => {
   }, []);
 
   const connectAndRedirect = useCallback(async (platform: Platform) => {
-    const connectEndpoint = CONNECT_ENDPOINT_BY_PLATFORM[platform];
-    if (!connectEndpoint) throw new Error("Connect API not available for this platform");
+    const endpoints = CONNECT_ENDPOINTS_BY_PLATFORM[platform];
+    if (!endpoints?.length) throw new Error("Connect API not available for this platform");
 
-    const res = await userapi.get(connectEndpoint);
+    const res = await requestWithSlashFallback(
+      (ep) => {
+        // Your Postman example for FB includes `?from=app`.
+        const params = platform === "facebook" ? { from: "app" } : undefined;
+        return userapi.get(ep, { params });
+      },
+      endpoints
+    );
+
     const redirectUrl = parseRedirectUrl(res.data);
     if (!redirectUrl) throw new Error("Backend did not return redirect_url");
 
@@ -184,29 +202,15 @@ const IntegrationPage: React.FC = () => {
       setPlatformLoading(platform, true);
       setPlatformError(platform, null);
       try {
-        if (nextValue) {
-          if (platform === "whatsapp") {
-            // WhatsApp connect redirect is not available yet; just enable via PATCH.
-            const enabled = await patchBotActive(platform, true);
-            setActiveByPlatform((s) => ({ ...s, [platform]: enabled }));
-            return;
-          }
-
-          // Facebook/Instagram: request connect URL and redirect to OAuth.
-          // Status will be reflected after redirect/callback when user returns.
-          await connectAndRedirect(platform);
-          return;
-        } else {
-          const disabled = await patchBotActive(platform, false);
-          setActiveByPlatform((s) => ({ ...s, [platform]: disabled }));
-        }
+        const next = await patchBotActive(platform, nextValue);
+        setActiveByPlatform((s) => ({ ...s, [platform]: next }));
       } catch (e: unknown) {
         setPlatformError(platform, getApiErrorMessage(e, "Failed to update"));
       } finally {
         setPlatformLoading(platform, false);
       }
     },
-    [connectAndRedirect, patchBotActive]
+    [patchBotActive]
   );
 
   return (
@@ -220,21 +224,48 @@ const IntegrationPage: React.FC = () => {
           const connectDisabled = integration.platform === "whatsapp";
           const toggleDisabled = false;
 
+          const showNotActive = err === NOT_ACTIVE_SENTINEL;
+          const statusText = showNotActive
+            ? "Disconnected"
+            : err
+              ? err
+              : active
+                ? "Connected"
+                : "Disconnected";
+
           return (
           <div key={integration.platform} className="bg-[#272727] rounded-xl p-5 flex flex-col justify-between shadow-lg hover:bg-gray-700 transition">
             <div>
               <h2 className="text-lg font-semibold mb-1">{integration.name}</h2>
               <p className="text-gray-400 text-sm mb-4">{integration.desc}</p>
-              {err ? <p className="text-red-400 text-xs mb-3">{err}</p> : null}
+              {statusText ? (
+                <p className={`${showNotActive ? "text-gray-400" : "text-red-400"} text-xs mb-3`}>
+                  {statusText}
+                </p>
+              ) : null}
               <button
                 type="button"
                 disabled={connectDisabled || loading}
-                className={`px-3 py-1 text-sm rounded-md ${
-                  active ? "bg-blue-600" : "bg-gray-600"
+                className={`px-4 py-2 text-sm rounded-md font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed ${
+                  connectDisabled
+                    ? "bg-gray-700 text-gray-300"
+                    : "bg-blue-600 hover:bg-blue-700 text-white"
                 }`}
                 onClick={() => {
                   if (connectDisabled) return;
-                  if (!active) void handleToggle(integration.platform, true);
+                  // FB/IG: get redirect_url and redirect to connect chatbot.
+                  if (!active) {
+                    setPlatformLoading(integration.platform, true);
+                    setPlatformError(integration.platform, null);
+                    void connectAndRedirect(integration.platform)
+                      .catch((e: unknown) => {
+                        setPlatformError(
+                          integration.platform,
+                          getApiErrorMessage(e, "Failed to connect")
+                        );
+                      })
+                      .finally(() => setPlatformLoading(integration.platform, false));
+                  }
                 }}
               >
                 {loading ? "Working..." : active ? "Connected" : "Connect"}

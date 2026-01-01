@@ -8,10 +8,10 @@ import { userapi } from "@/lib/http/client";
 import axios, { type AxiosResponse } from "axios";
 import { addMonths, format, parseISO, subMonths } from "date-fns";
 import {
-  ChevronLeft,
-  ChevronRight,
-  ExternalLink,
-  Menu,
+    ChevronLeft,
+    ChevronRight,
+    ExternalLink,
+    Menu,
 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FcGoogle } from "react-icons/fc";
@@ -429,7 +429,8 @@ const AgendaIntegrationPage: React.FC = () => {
       <CalendarDayButton
         {...props}
         data-has-appointment={hasAppointment ? "true" : "false"}
-        data-is-today={isToday ? "true" : "false"}
+        // Only treat "today" as special when it has appointments.
+        data-is-today={isToday && hasAppointment ? "true" : "false"}
       />
     );
   }
@@ -659,20 +660,17 @@ const AgendaIntegrationPage: React.FC = () => {
             <style jsx global>{`
               .agenda-rdp [data-slot='calendar'] {
                 width: 100%;
-                margin: 0 auto;
-              }
-              .agenda-rdp .rdp {
-                width: 100%;
-                margin: 0 auto;
+                margin: 0;
               }
               .agenda-rdp .rdp-months {
                 width: 100%;
               }
               .agenda-rdp .rdp-month {
                 width: 100%;
-                margin: 0 auto;
+                margin: 0;
               }
               .agenda-rdp .rdp-weekdays {
+                width: 100%;
                 justify-content: space-between;
               }
               .agenda-rdp .rdp-weekday {
@@ -682,58 +680,56 @@ const AgendaIntegrationPage: React.FC = () => {
                 color: rgba(156, 163, 175, 1);
                 font-size: 0.95rem;
                 font-weight: 500;
+                width: var(--cell-size);
               }
 
               .agenda-rdp .rdp-week {
+                width: 100%;
                 justify-content: space-between;
               }
 
               .agenda-rdp .rdp-day {
                 display: flex;
                 justify-content: center;
+                width: var(--cell-size);
               }
 
               /* Make day buttons look like the app circles */
               .agenda-rdp button[data-day] {
-                width: 40px !important;
-                height: 40px !important;
+                width: var(--cell-size) !important;
+                height: var(--cell-size) !important;
                 border-radius: 9999px !important;
                 margin: 0 auto;
-                font-size: 1rem;
+                font-size: 0.95rem;
                 font-weight: 500;
+                border: 1px solid transparent;
               }
 
               @media (min-width: 768px) {
                 .agenda-rdp button[data-day] {
-                  width: 56px !important;
-                  height: 56px !important;
-                  font-size: 1.25rem;
+                  font-size: 1.05rem;
                 }
                 .agenda-rdp .rdp-weekday {
                   font-size: 1.05rem;
                 }
               }
 
+              /* Selected day: show subtle outline (not filled) */
+              .agenda-rdp button[data-selected-single='true'] {
+                background-color: transparent !important;
+                border-color: rgba(156, 163, 175, 0.6) !important;
+                color: white !important;
+              }
+
               /* Has appointment (blue circle) */
               .agenda-rdp button[data-has-appointment='true'] {
                 background-color: rgb(37 99 235) !important;
                 color: white !important;
-              }
-
-              /* Today (green circle) */
-              .agenda-rdp button[data-is-today='true'] {
-                background-color: rgb(16 185 129) !important;
-                color: white !important;
-              }
-
-              /* Selected overrides everything (blue circle) */
-              .agenda-rdp button[data-selected-single='true'] {
-                background-color: rgb(37 99 235) !important;
-                color: white !important;
+                border-color: transparent !important;
               }
             `}</style>
 
-            <div className="flex justify-center">
+            <div className="w-full">
               <Calendar
                 mode="single"
                 month={calendarDate}
@@ -755,10 +751,12 @@ const AgendaIntegrationPage: React.FC = () => {
                     );
                   }
                 }}
-                showOutsideDays
+                showOutsideDays={false}
                 components={{ DayButton: AgendaDayButton }}
                 modifiers={{ hasAppointment: appointmentDates }}
+                className="w-full"
                 classNames={{
+                  root: "w-full mx-0",
                   nav: "hidden",
                   month_caption: "hidden",
                   months: "w-full",
