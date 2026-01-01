@@ -104,9 +104,10 @@
 "use client";
 
 import { getSession, signIn } from "next-auth/react";
-import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { FaGoogle } from "react-icons/fa";
 
 type ClientSession = {
   user?: {
@@ -114,6 +115,7 @@ type ClientSession = {
     hasPlan?: boolean;
   };
   accessToken?: string;
+  refreshToken?: string;
 } | null;
 
 async function waitForSessionReady(maxMs = 2000, intervalMs = 100): Promise<ClientSession> {
@@ -132,6 +134,42 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const router = useRouter();
+
+  const applySessionAndRedirect = (session: ClientSession) => {
+    const role = session?.user?.role?.trim().toLowerCase();
+    const hasPlan = session?.user?.hasPlan;
+
+    const accessToken = session?.accessToken;
+    const refreshToken = session?.refreshToken;
+
+    if (accessToken) localStorage.setItem("access_token", accessToken);
+    if (refreshToken) localStorage.setItem("refresh_token", refreshToken);
+
+    if (role === "admin") {
+      window.location.href = "/admin/dashboard";
+    } else if (role === "user" && hasPlan) {
+      router.push("/user/dashboard");
+    } else if (role === "user" && !hasPlan) {
+      router.push("/user/dashboard");
+    } else {
+      router.push("/");
+    }
+  };
+
+  // If user comes back here after Google OAuth, session already exists.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const session = await waitForSessionReady();
+      if (cancelled) return;
+      if (session?.user?.role && session?.accessToken) {
+        applySessionAndRedirect(session);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const buildClientInfo = () => {
     if (typeof window === "undefined") return null;
@@ -169,27 +207,7 @@ export default function LoginPage() {
 
     // 🔐 Wait for session to be ready (role + accessToken)
     const session = await waitForSessionReady();
-    const role = session?.user?.role?.trim().toLowerCase();
-    const hasPlan = session?.user?.hasPlan;
-
-    // 🔑 Save accessToken to localStorage for axios interceptors
-    const accessToken = session?.accessToken;
-    if (accessToken) {
-      localStorage.setItem("access_token", accessToken);
-    }
-
-    // 🔀 Redirect logic (plan page later)
-    if (role === "admin") {
-      // Full navigation avoids edge cases where middleware sees a stale token
-      // during client-side transitions right after sign-in.
-      window.location.href = "/admin/dashboard";
-    } else if (role === "user" && hasPlan) {
-      router.push("/user/dashboard");
-    } else if (role === "user" && !hasPlan) {
-      router.push("/user/dashboard");
-    } else {
-      router.push("/");
-    }
+    applySessionAndRedirect(session);
   }
 
 
@@ -220,25 +238,21 @@ export default function LoginPage() {
           Log in
         </button>
 
-        <div className="flex items-center justify-center gap-4 pt-4">
-          <button
-            type="button"
-            onClick={() => signIn("google")}
-            className="flex items-center justify-center gap-2 bg-white text-black px-4 py-2 rounded-md w-full"
-          >
-            <Image src="/google.svg" alt="Google" width={18} height={18} />
-            Login with Google
-          </button>
+        <p className="text-center text-sm text-white/80">
+          Don&apos;t have an account?{" "}
+          <Link href="/signup" className="underline underline-offset-4 hover:text-white">
+            Sign up
+          </Link>
+        </p>
 
-          <button
-            type="button"
-            onClick={() => signIn("apple")}
-            className="flex items-center justify-center gap-2 bg-white text-black px-4 py-2 rounded-md w-full"
-          >
-            <Image src="/apple.svg" alt="Apple" width={18} height={18} />
-            Login with Apple
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => signIn("google", { callbackUrl: "/login" })}
+          className="flex items-center justify-center gap-2 bg-white text-black px-4 py-2 rounded-md w-full"
+        >
+          <FaGoogle className="text-lg" aria-hidden="true" />
+          Login with Google
+        </button>
       </form>
     </div>
   );

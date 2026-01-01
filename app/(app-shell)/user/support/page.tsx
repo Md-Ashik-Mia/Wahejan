@@ -38,7 +38,6 @@ type SupportTicket = {
   user: string;
   ticket_id: string;
   time_since_created: string;
-  subject: string;
   description: string;
   status: string;
   created_at: string;
@@ -52,7 +51,6 @@ function normalizeTicket(raw: unknown): SupportTicket {
     user: typeof r.user === "string" ? r.user : "",
     ticket_id: typeof r.ticket_id === "string" ? r.ticket_id : "",
     time_since_created: typeof r.time_since_created === "string" ? r.time_since_created : "",
-    subject: typeof r.subject === "string" ? r.subject : "",
     description: typeof r.description === "string" ? r.description : "",
     status: typeof r.status === "string" ? r.status : "",
     created_at: typeof r.created_at === "string" ? r.created_at : "",
@@ -67,7 +65,6 @@ function formatWhen(value: string, fallback = "—"): string {
 }
 
 const SupportPage: React.FC = () => {
-  const [subject, setSubject] = useState("");
   const [issue, setIssue] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
 
@@ -133,7 +130,6 @@ const SupportPage: React.FC = () => {
   }, [fetchTickets]);
 
   const handleSubmit = async () => {
-    if (!subject.trim()) return alert("Please enter a subject.");
     if (!issue.trim()) return alert("Please describe your issue.");
 
     try {
@@ -146,7 +142,6 @@ const SupportPage: React.FC = () => {
       for (const endpoint of ticketEndpoints) {
         try {
           await userapi.post(endpoint, {
-            subject: subject.trim(),
             description: issue.trim(),
           });
           created = true;
@@ -162,7 +157,6 @@ const SupportPage: React.FC = () => {
       if (!created) throw lastError ?? new Error("Failed to create ticket");
 
       setStatus("success");
-      setSubject("");
       setIssue("");
       void fetchTickets();
       setTimeout(() => setStatus("idle"), 2500);
@@ -186,13 +180,6 @@ const SupportPage: React.FC = () => {
 
         {/* Input and Button */}
         <div className="space-y-3">
-          <input
-            type="text"
-            placeholder="Subject"
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            className="w-full bg-gray-700 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
           <div className="flex gap-3">
             <input
               type="text"
@@ -254,12 +241,9 @@ const SupportPage: React.FC = () => {
               <div key={t.id || t.ticket_id} className="bg-gray-700 rounded-lg p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="font-semibold truncate">{t.ticket_id || "Support Ticket"}</p>
-                    <p className="text-gray-300 text-sm mt-1 truncate">
-                      Subject: {t.subject || "—"}
-                    </p>
+                    <p className="text-sm text-gray-300 font-medium truncate">{t.ticket_id || "Support Ticket"}</p>
                     {t.description ? (
-                      <p className="text-gray-200 text-sm mt-1">{t.description}</p>
+                      <p className="text-white text-base font-medium mt-2 leading-relaxed">{t.description}</p>
                     ) : null}
                     <p className="text-gray-400 text-xs mt-2">
                       {t.time_since_created ? `${t.time_since_created} • ` : ""}

@@ -96,7 +96,6 @@ const SettingsPage: React.FC = () => {
   const fakeUserSettings = {
     activePlan: null as string | null,
     canceledPlans: [],
-    twoFactor: true,
     aiTraining: false,
     sessions: [
       { device: "MacBook Pro • Chrome", ip: "192.168.1.100", location: "San Francisco, CA", time: "Current session", active: true },
@@ -117,7 +116,6 @@ const SettingsPage: React.FC = () => {
   const [upgradeLoadingPlanId, setUpgradeLoadingPlanId] = useState<number | null>(null);
   const [upgradeError, setUpgradeError] = useState<string | null>(null);
   const [canceledPlans, setCanceledPlans] = useState<string[]>(fakeUserSettings.canceledPlans);
-  const [twoFactor, setTwoFactor] = useState(fakeUserSettings.twoFactor);
   const [aiTraining, setAiTraining] = useState(fakeUserSettings.aiTraining);
   const [sessions, setSessions] = useState<ApiSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
@@ -451,7 +449,6 @@ const SettingsPage: React.FC = () => {
       setPlans(data.subscriptionPlans);
       setActivePlan(data.activePlan);
       setCanceledPlans(data.canceledPlans);
-      setTwoFactor(data.twoFactor);
       setAiTraining(data.aiTraining);
       setSessions(data.sessions);
     }
@@ -693,23 +690,6 @@ const SettingsPage: React.FC = () => {
             >
               Change
             </button>
-          </div>
-
-          <div className="flex justify-between items-center border-b border-gray-700 pb-3">
-            <div>
-              <h4 className="font-semibold">Two-Factor Authentication</h4>
-              <p className="text-gray-400 text-sm">Add extra security</p>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                className="sr-only peer"
-                checked={twoFactor}
-                onChange={() => setTwoFactor(!twoFactor)}
-              />
-              <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:bg-blue-600 transition-all"></div>
-              <div className="absolute left-0.5 top-0.5 h-5 w-5 bg-white rounded-full transition-transform peer-checked:translate-x-full"></div>
-            </label>
           </div>
 
           <div>
