@@ -30,6 +30,7 @@ export const userNav = [
   { label: "Support", href: "/user/support", icon: "/support.png" },
   { label: "Teams", href: "/user/teams", icon: "/userteam.png" },
   { label: "Test Chat", href: "/user/testchat", icon: "/testchat.png" },
+  { label: "Privacy Policy", href: "/user/policy", icon: "/support.png" },
   { label: "Settings", href: "/user/settings", icon: "/settings.png" },
 ];
 

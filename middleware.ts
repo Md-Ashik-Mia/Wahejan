@@ -38,8 +38,8 @@
 
 
 
-import { withAuth, type NextRequestWithAuth } from "next-auth/middleware";
 import type { JWT } from "next-auth/jwt";
+import { withAuth, type NextRequestWithAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
 
 type AppJWT = JWT & {
@@ -93,6 +93,15 @@ export default withAuth(
         });
       }
       return NextResponse.redirect(new URL("/unauthorized", req.url));
+    }
+
+    // Force Privacy Policy acceptance for all user pages.
+    // If the cookie isn't set, the user must stay on /user/policy.
+    if (path.startsWith("/user") && !path.startsWith("/user/policy")) {
+      const accepted = req.cookies.get("policy_accepted")?.value === "true";
+      if (!accepted) {
+        return NextResponse.redirect(new URL("/user/policy", req.url));
+      }
     }
 
     // Block some user pages if no subscription

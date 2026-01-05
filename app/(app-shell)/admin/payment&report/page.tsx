@@ -1,11 +1,14 @@
-import Invoice from './components/Invoice'
+import { notFound } from "next/navigation";
 
-const PaymentandReportPage = () => {
-  return (
-    <div>
-        <Invoice />
-    </div>
-  )
+export default function PaymentandReportPage() {
+  // Disabled for now.
+  notFound();
+
+  // Previous implementation (kept for quick restore):
+  // import Invoice from "./components/Invoice";
+  // return (
+  //   <div>
+  //     <Invoice />
+  //   </div>
+  // );
 }
-
-export default PaymentandReportPage

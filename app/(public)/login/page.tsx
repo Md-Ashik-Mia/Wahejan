@@ -133,6 +133,7 @@ async function waitForSessionReady(maxMs = 2000, intervalMs = 100): Promise<Clie
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const router = useRouter();
 
   const applySessionAndRedirect = (session: ClientSession) => {
@@ -188,26 +189,36 @@ export default function LoginPage() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
 
+    if (isLoggingIn) return;
+    setIsLoggingIn(true);
+
     const clientInfo = buildClientInfo();
     if (clientInfo) {
       localStorage.setItem("client_info", JSON.stringify(clientInfo));
     }
 
-    const res = await signIn("credentials", {
-      redirect: false, // we handle redirect manually
-      email,
-      password,
-      client_info: clientInfo ? JSON.stringify(clientInfo) : "",
-    });
+    try {
+      const res = await signIn("credentials", {
+        redirect: false, // we handle redirect manually
+        email,
+        password,
+        client_info: clientInfo ? JSON.stringify(clientInfo) : "",
+      });
 
-    if (res?.error) {
-      alert("Invalid email or password");
-      return;
+      if (res?.error) {
+        alert("Invalid email or password");
+        setIsLoggingIn(false);
+        return;
+      }
+
+      // 🔐 Wait for session to be ready (role + accessToken)
+      const session = await waitForSessionReady();
+      applySessionAndRedirect(session);
+    } catch (err: unknown) {
+      console.error(err);
+      alert("Login failed. Please try again.");
+      setIsLoggingIn(false);
     }
-
-    // 🔐 Wait for session to be ready (role + accessToken)
-    const session = await waitForSessionReady();
-    applySessionAndRedirect(session);
   }
 
 
@@ -223,6 +234,7 @@ export default function LoginPage() {
           className="w-full bg-[#1e2837] px-4 py-3 rounded-md outline-none"
           onChange={(e) => setEmail(e.target.value)}
           value={email}
+          disabled={isLoggingIn}
         />
         <input
           type="password"
@@ -230,12 +242,20 @@ export default function LoginPage() {
           className="w-full bg-[#1e2837] px-4 py-3 rounded-md outline-none"
           onChange={(e) => setPassword(e.target.value)}
           value={password}
+          disabled={isLoggingIn}
         />
         <button
           type="submit"
-          className="w-full bg-[#0B57D0] hover:bg-[#0843a8] py-3 rounded-md font-semibold"
+          disabled={isLoggingIn}
+          className="w-full bg-[#0B57D0] hover:bg-[#0843a8] py-3 rounded-md font-semibold disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
-          Log in
+          {isLoggingIn ? (
+            <span
+              className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
+              aria-hidden="true"
+            />
+          ) : null}
+          {isLoggingIn ? "Logging in…" : "Log in"}
         </button>
 
         <p className="text-center text-sm text-white/80">
@@ -247,8 +267,13 @@ export default function LoginPage() {
 
         <button
           type="button"
-          onClick={() => signIn("google", { callbackUrl: "/login" })}
-          className="flex items-center justify-center gap-2 bg-white text-black px-4 py-2 rounded-md w-full"
+          disabled={isLoggingIn}
+          onClick={() => {
+            if (isLoggingIn) return;
+            setIsLoggingIn(true);
+            void signIn("google", { callbackUrl: "/login" });
+          }}
+          className="flex items-center justify-center gap-2 bg-white text-black px-4 py-2 rounded-md w-full disabled:opacity-70 disabled:cursor-not-allowed"
         >
           <FaGoogle className="text-lg" aria-hidden="true" />
           Login with Google
