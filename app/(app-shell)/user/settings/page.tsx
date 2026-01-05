@@ -1,6 +1,7 @@
 "use client";
 import { userApi } from "@/lib/http/client";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
 
 type ApiPlan = {
   id: number;
@@ -132,6 +133,12 @@ const SettingsPage: React.FC = () => {
   const [changePasswordLoading, setChangePasswordLoading] = useState(false);
   const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
 
+  const [customOfferOpen, setCustomOfferOpen] = useState(false);
+  const [customMsgLimit, setCustomMsgLimit] = useState("");
+  const [customUserLimit, setCustomUserLimit] = useState("");
+  const [customTokenLimit, setCustomTokenLimit] = useState("");
+  const [customOfferLoading, setCustomOfferLoading] = useState(false);
+
   const apiVariantPaths = useCallback((pathWithoutApiPrefix: string) => {
     const baseUrl = (userApi.defaults.baseURL ?? "").replace(/\/+$/, "");
     const baseHasApi = baseUrl.endsWith("/api");
@@ -140,6 +147,55 @@ const SettingsPage: React.FC = () => {
       ? [pathWithoutApiPrefix, pathWithApiPrefix]
       : [pathWithApiPrefix, pathWithoutApiPrefix];
   }, []);
+
+  const submitCustomOffer = useCallback(async () => {
+    if (customOfferLoading) return;
+
+    const msg_limit = Number(customMsgLimit);
+    const user_limit = Number(customUserLimit);
+    const token_limit = Number(customTokenLimit);
+
+    if (!Number.isFinite(msg_limit) || msg_limit <= 0) {
+      toast.error("Message limit is required");
+      return;
+    }
+    if (!Number.isFinite(user_limit) || user_limit <= 0) {
+      toast.error("User limit is required");
+      return;
+    }
+    if (!Number.isFinite(token_limit) || token_limit <= 0) {
+      toast.error("Token limit is required");
+      return;
+    }
+
+    setCustomOfferLoading(true);
+    const toastId = toast.loading("Sending request…");
+
+    try {
+      const [endpoint, fallbackEndpoint] = apiVariantPaths("/admin/request-custom-plan/");
+      const payload = { msg_limit, user_limit, token_limit };
+
+      try {
+        await userApi.post(endpoint, payload);
+      } catch (error: unknown) {
+        if (getStatusCode(error) === 404) {
+          await userApi.post(fallbackEndpoint, payload);
+        } else {
+          throw error;
+        }
+      }
+
+      toast.success("Request sent to admin", { id: toastId });
+      setCustomOfferOpen(false);
+      setCustomMsgLimit("");
+      setCustomUserLimit("");
+      setCustomTokenLimit("");
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error), { id: toastId });
+    } finally {
+      setCustomOfferLoading(false);
+    }
+  }, [apiVariantPaths, customMsgLimit, customOfferLoading, customTokenLimit, customUserLimit, getErrorMessage, getStatusCode]);
 
   const sortedSessions = useMemo(() => {
     return sessions
@@ -525,7 +581,16 @@ const SettingsPage: React.FC = () => {
     <div className="min-h-screen bg-black text-white p-6 space-y-10">
       {/* ================= SUBSCRIPTION ================= */}
       <section>
-        <h2 className="text-xl font-semibold mb-4">Subscription Management</h2>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-xl font-semibold">Subscription Management</h2>
+          <button
+            type="button"
+            onClick={() => setCustomOfferOpen(true)}
+            className="bg-blue-600 px-4 py-2 rounded-lg text-sm hover:bg-blue-700 active:scale-95 transition"
+          >
+            Request Custom Offer
+          </button>
+        </div>
 
         <div className="bg-[#272727] rounded-xl p-6 shadow-lg mb-6 border border-gray-700">
           <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -837,48 +902,92 @@ const SettingsPage: React.FC = () => {
         </div>
       ) : null}
 
-      {/* ================= DATA & PRIVACY ================= */}
-      <section>
-        <h2 className="text-xl font-semibold mb-4">Data & Privacy</h2>
-        <div className="bg-gray-800 rounded-xl p-6 space-y-4 shadow-lg">
-          <div className="flex justify-between items-center border-b border-gray-700 pb-3">
-            <div>
-              <h4 className="font-semibold">Export My Data</h4>
-              <p className="text-gray-400 text-sm">Download all your data</p>
+      {customOfferOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
+          <div className="w-full max-w-md bg-[#272727] rounded-xl shadow-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Request Custom Offer</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  if (customOfferLoading) return;
+                  setCustomOfferOpen(false);
+                }}
+                className="text-gray-300 hover:text-white transition"
+                aria-label="Close"
+              >
+                ✕
+              </button>
             </div>
-            <button className="bg-blue-600 px-4 py-1 rounded-lg text-sm hover:bg-blue-700 active:scale-95 transition">
-              Export
-            </button>
-          </div>
 
-          <div className="flex justify-between items-center border-b border-gray-700 pb-3">
-            <div>
-              <h4 className="font-semibold">AI Training Data</h4>
-              <p className="text-gray-400 text-sm">Allow anonymized data for AI</p>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                className="sr-only peer"
-                checked={aiTraining}
-                onChange={() => setAiTraining(!aiTraining)}
-              />
-              <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:bg-blue-600 transition-all"></div>
-              <div className="absolute left-0.5 top-0.5 h-5 w-5 bg-white rounded-full transition-transform peer-checked:translate-x-full"></div>
-            </label>
-          </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-300 mb-2">Message limit</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={customMsgLimit}
+                  onChange={(e) => setCustomMsgLimit(e.target.value)}
+                  className="w-full bg-gray-700 px-4 py-3 rounded-md outline-none"
+                  placeholder="150"
+                  disabled={customOfferLoading}
+                />
+              </div>
 
-          <div className="flex justify-between items-center bg-red-950 border border-red-700 p-3 rounded-lg hover:bg-red-900/70 transition">
-            <div>
-              <h4 className="font-semibold text-red-400">Delete Account</h4>
-              <p className="text-gray-400 text-sm">Permanently delete your account</p>
+              <div>
+                <label className="block text-sm text-gray-300 mb-2">User limit</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={customUserLimit}
+                  onChange={(e) => setCustomUserLimit(e.target.value)}
+                  className="w-full bg-gray-700 px-4 py-3 rounded-md outline-none"
+                  placeholder="5"
+                  disabled={customOfferLoading}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-300 mb-2">Token limit</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={customTokenLimit}
+                  onChange={(e) => setCustomTokenLimit(e.target.value)}
+                  className="w-full bg-gray-700 px-4 py-3 rounded-md outline-none"
+                  placeholder="150000"
+                  disabled={customOfferLoading}
+                />
+              </div>
             </div>
-            <button className="bg-red-700 px-4 py-1 rounded-lg text-sm hover:bg-red-800 active:scale-95 transition">
-              Delete
-            </button>
+
+            <div className="flex justify-end gap-3 mt-5">
+              <button
+                type="button"
+                onClick={() => {
+                  if (customOfferLoading) return;
+                  setCustomOfferOpen(false);
+                }}
+                className="bg-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-600 active:scale-95 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitCustomOffer}
+                disabled={customOfferLoading}
+                className={`bg-blue-600 px-4 py-2 rounded-lg text-sm hover:bg-blue-700 active:scale-95 transition ${
+                  customOfferLoading ? "opacity-70 cursor-not-allowed" : ""
+                }`}
+              >
+                {customOfferLoading ? "Sending..." : "Send Request"}
+              </button>
+            </div>
           </div>
         </div>
-      </section>
+      ) : null}
+
+
     </div>
   );
 };
