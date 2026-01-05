@@ -19,6 +19,7 @@ const CONNECT_ENDPOINTS_BY_PLATFORM: Partial<Record<Platform, string[]>> = {
   // Backend examples show /api/connect/...; include both forms to be safe.
   facebook: ["/connect/fb/", "/connect/fb", "/api/connect/fb/", "/api/connect/fb"],
   instagram: ["/connect/ig/", "/connect/ig", "/api/connect/ig/", "/api/connect/ig"],
+  whatsapp: ["/connect/wa/", "/connect/wa", "/api/connect/wa/", "/api/connect/wa"],
 };
 
 const NOT_ACTIVE_SENTINEL = "__NOT_ACTIVE__";
@@ -75,7 +76,7 @@ const IntegrationPage: React.FC = () => {
         {
           platform: "whatsapp" as const,
           name: "WhatsApp Business",
-          desc: "Connect to automate replies (coming soon)",
+          desc: "Connect to automate replies",
         },
         {
           platform: "instagram" as const,
@@ -181,8 +182,11 @@ const IntegrationPage: React.FC = () => {
 
     const res = await requestWithSlashFallback(
       (ep) => {
-        // Your Postman example for FB includes `?from=app`.
-        const params = platform === "facebook" ? { from: "app" } : undefined;
+        // Force the web OAuth flow.
+        const params =
+          platform === "facebook" || platform === "instagram" || platform === "whatsapp"
+            ? { from: "web" }
+            : undefined;
         return userapi.get(ep, { params });
       },
       endpoints
@@ -221,7 +225,7 @@ const IntegrationPage: React.FC = () => {
           const active = Boolean(activeByPlatform[integration.platform]);
           const loading = Boolean(loadingByPlatform[integration.platform]);
           const err = errorByPlatform[integration.platform] ?? null;
-          const connectDisabled = integration.platform === "whatsapp";
+          const connectDisabled = false;
           const toggleDisabled = false;
 
           const showNotActive = err === NOT_ACTIVE_SENTINEL;
@@ -253,22 +257,21 @@ const IntegrationPage: React.FC = () => {
                 }`}
                 onClick={() => {
                   if (connectDisabled) return;
-                  // FB/IG: get redirect_url and redirect to connect chatbot.
-                  if (!active) {
-                    setPlatformLoading(integration.platform, true);
-                    setPlatformError(integration.platform, null);
-                    void connectAndRedirect(integration.platform)
-                      .catch((e: unknown) => {
-                        setPlatformError(
-                          integration.platform,
-                          getApiErrorMessage(e, "Failed to connect")
-                        );
-                      })
-                      .finally(() => setPlatformLoading(integration.platform, false));
-                  }
+                  // Always allow opening the OAuth flow.
+                  // When already connected, this acts as "Update".
+                  setPlatformLoading(integration.platform, true);
+                  setPlatformError(integration.platform, null);
+                  void connectAndRedirect(integration.platform)
+                    .catch((e: unknown) => {
+                      setPlatformError(
+                        integration.platform,
+                        getApiErrorMessage(e, "Failed to connect")
+                      );
+                    })
+                    .finally(() => setPlatformLoading(integration.platform, false));
                 }}
               >
-                {loading ? "Working..." : active ? "Connected" : "Connect"}
+                {loading ? "Working..." : active ? "Update" : "Connect"}
               </button>
             </div>
 
