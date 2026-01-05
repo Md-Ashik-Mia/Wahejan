@@ -7,7 +7,7 @@ export const adminNav = [
   { label: "Subscription Management",  href: "/admin/subscription",  icon: "/subscriptionmanagement.png" },
   { label: "Team",  href: "/admin/team",  icon: "/team.png" },
   { label: "Overview",  href: "/admin/overview",  icon: "/overview.png" },
-  { label: "Payment & Report",  href: "/admin/payment&report",  icon: "/paymentandreport.png" },
+  // { label: "Payment & Report",  href: "/admin/payment&report",  icon: "/paymentandreport.png" },
   {
     label:"Security & Settings", href:"/admin/settings", icon:"/settings.png"
   }
