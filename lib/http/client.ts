@@ -135,6 +135,7 @@ function attachClientInfo(
 /** Generic API instance (can be used in server or client code) */
 export const api = axios.create({
   baseURL: BASE_URL,
+  timeout: 20000,
   headers: {
     "Content-Type": "application/json",
     // "User-Agent":`${brand}, ${deviceName}, ${Platform.OS}`
@@ -147,6 +148,7 @@ api.interceptors.request.use(attachClientInfo);
 /** Regular user API */
 export const userApi = axios.create({
   baseURL: BASE_URL,
+  timeout: 20000,
 });
 
 // Alias (some pages/imports expect this exact name)
@@ -155,6 +157,7 @@ export const userapi = userApi;
 /** Admin API */
 export const adminApi = axios.create({
   baseURL: BASE_URL,
+  timeout: 20000,
   headers: {
     // keep empty to avoid CORS “header not allowed” issues
   },
