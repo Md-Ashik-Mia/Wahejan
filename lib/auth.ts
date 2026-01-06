@@ -232,6 +232,10 @@ export const authOptions: NextAuthOptions = {
           const cfIp = readHeader(req, "cf-connecting-ip");
           if (cfIp) headers["CF-Connecting-IP"] = cfIp;
 
+          // If your backend is behind ngrok, this header bypasses the browser-warning interstitial.
+          // Safe for non-ngrok backends (they'll ignore unknown headers).
+          headers["ngrok-skip-browser-warning"] = "true";
+
           // IMPORTANT: baseURL in api is NEXT_PUBLIC_API_BASE_URL
           const { data } = await api.post(
             "/login/",
@@ -324,9 +328,17 @@ export const authOptions: NextAuthOptions = {
       // Google OAuth: exchange Google access_token for backend access/refresh tokens.
       if (account?.provider === "google" && account.access_token) {
         try {
-          const { data } = await api.post("/auth/google/login/", {
-            access_token: account.access_token,
-          });
+          const { data } = await api.post(
+            "/auth/google/login/",
+            {
+              access_token: account.access_token,
+            },
+            {
+              headers: {
+                "ngrok-skip-browser-warning": "true",
+              },
+            }
+          );
 
           const backendUser = (data as any)?.user;
           const access = (data as any)?.access ?? (data as any)?.access_token;
