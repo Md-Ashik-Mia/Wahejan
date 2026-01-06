@@ -118,6 +118,19 @@ type ClientSession = {
   refreshToken?: string;
 } | null;
 
+function withTimeout<T>(promise: Promise<T>, ms: number, label = "Request"): Promise<T> {
+  let timeoutId: number | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      reject(new Error(`${label}_TIMEOUT`));
+    }, ms);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => {
+    if (typeof timeoutId === "number") window.clearTimeout(timeoutId);
+  }) as Promise<T>;
+}
+
 async function waitForSessionReady(maxMs = 2000, intervalMs = 100): Promise<ClientSession> {
   const start = Date.now();
   while (Date.now() - start < maxMs) {
@@ -201,12 +214,16 @@ export default function LoginPage() {
     }
 
     try {
-      const res = await signIn("credentials", {
+      const res = await withTimeout(
+        signIn("credentials", {
         redirect: false, // we handle redirect manually
         email,
         password,
         client_info: clientInfo ? JSON.stringify(clientInfo) : "",
-      });
+        }),
+        25000,
+        "SIGNIN"
+      );
 
       if (res?.error) {
         alert(
@@ -217,7 +234,7 @@ export default function LoginPage() {
       }
 
       // 🔐 Wait for session to be ready (role + accessToken)
-      const session = await waitForSessionReady();
+      const session = await withTimeout(waitForSessionReady(), 25000, "SESSION");
       const role = session?.user?.role;
       const accessToken = session?.accessToken;
 
@@ -232,7 +249,11 @@ export default function LoginPage() {
       applySessionAndRedirect(session);
     } catch (err: unknown) {
       console.error(err);
-      if (err instanceof Error && err.message === "SESSION_NOT_READY") {
+      if (err instanceof Error && (err.message === "SIGNIN_TIMEOUT" || err.message === "SESSION_TIMEOUT")) {
+        alert(
+          "Login is taking too long. On Vercel this usually means your backend URL is unreachable (ngrok sleeping/expired) or NEXTAUTH_URL is set to localhost. Fix NEXTAUTH_URL to your deployed https domain and ensure the backend is publicly reachable."
+        );
+      } else if (err instanceof Error && err.message === "SESSION_NOT_READY") {
         alert(
           "Login session was not ready for routing. Please re-try after fixing NEXTAUTH_SECRET/NEXTAUTH_URL on Vercel."
         );
