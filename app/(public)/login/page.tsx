@@ -209,7 +209,9 @@ export default function LoginPage() {
       });
 
       if (res?.error) {
-        alert("Invalid email or password");
+        alert(
+          "Login failed. If this only happens on Vercel, check that NEXTAUTH_URL is your deployed https URL and NEXTAUTH_SECRET is set (no quotes). If your backend is an ngrok URL, make sure it is still active and reachable from Vercel."
+        );
         setIsLoggingIn(false);
         return;
       }
