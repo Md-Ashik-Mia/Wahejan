@@ -185,7 +185,7 @@ const AdminCompaniesPage = () => {
         <p className="text-red-400">{error}</p>
       ) : null}
 
-      <CustomPlanForm companies={companies} onAddCustomPlan={handleAddPlan} />
+      {/* <CustomPlanForm companies={companies} onAddCustomPlan={handleAddPlan} /> */}
 
       <CustomPlanList customPlans={customPlans} onDeletePlan={handleDeletePlan} />
 

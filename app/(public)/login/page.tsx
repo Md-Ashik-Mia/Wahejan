@@ -147,14 +147,17 @@ export default function LoginPage() {
     if (refreshToken) localStorage.setItem("refresh_token", refreshToken);
 
     if (role === "admin") {
-      window.location.href = "/admin/dashboard";
-    } else if (role === "user" && hasPlan) {
-      router.push("/user/dashboard");
-    } else if (role === "user" && !hasPlan) {
-      router.push("/user/dashboard");
-    } else {
-      router.push("/");
+      router.replace("/admin/dashboard");
+      return;
     }
+    if (role === "user") {
+      router.replace("/user/dashboard");
+      return;
+    }
+
+    // If we got here, the session is not usable for routing.
+    // Avoid redirect loops (common when NEXTAUTH_SECRET/NEXTAUTH_URL are misconfigured in prod).
+    throw new Error("SESSION_NOT_READY");
   };
 
   // If user comes back here after Google OAuth, session already exists.
@@ -213,10 +216,27 @@ export default function LoginPage() {
 
       // 🔐 Wait for session to be ready (role + accessToken)
       const session = await waitForSessionReady();
+      const role = session?.user?.role;
+      const accessToken = session?.accessToken;
+
+      if (!role || !accessToken) {
+        alert(
+          "Login succeeded but session is missing (role/access token). On Vercel this usually means NEXTAUTH_SECRET or NEXTAUTH_URL is not set correctly. Check Vercel → Project → Settings → Environment Variables."
+        );
+        setIsLoggingIn(false);
+        return;
+      }
+
       applySessionAndRedirect(session);
     } catch (err: unknown) {
       console.error(err);
-      alert("Login failed. Please try again.");
+      if (err instanceof Error && err.message === "SESSION_NOT_READY") {
+        alert(
+          "Login session was not ready for routing. Please re-try after fixing NEXTAUTH_SECRET/NEXTAUTH_URL on Vercel."
+        );
+      } else {
+        alert("Login failed. Please try again.");
+      }
       setIsLoggingIn(false);
     }
   }
