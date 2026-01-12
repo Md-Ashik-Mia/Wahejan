@@ -16,23 +16,10 @@
 //       </body>
 //     </html>
 //   );
-import Header from "@/components/Header";
-import QueryProvider from "@/components/providers/QueryProvider";
-import SidebarClient from "@/components/SidebarClient";
-// import { getRole } from "@/lib/auth";
+import AppShellClient from "./AppShellClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function AppShell({ children }: { children: React.ReactNode }) {
-  // const role = await getRole();
-
-  return (
-    <>
-      <Header />
-      <SidebarClient  />
-      <div className="min-h-screen pt-[var(--header-h)] pl-[var(--sidebar-w)]">
-        <QueryProvider>{children}</QueryProvider>
-      </div>
-    </>
-  );
+export default function AppShell({ children }: { children: React.ReactNode }) {
+  return <AppShellClient>{children}</AppShellClient>;
 }
