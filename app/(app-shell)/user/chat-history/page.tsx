@@ -2,6 +2,8 @@
 
 import { useSession } from "next-auth/react";
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { FaFacebookF, FaInstagram, FaTelegramPlane, FaWhatsapp } from "react-icons/fa";
+import { MdSms } from "react-icons/md";
 
 type Platform = "facebook" | "whatsapp" | "instagram" | "telegram" | "sms" | string;
 
@@ -27,6 +29,19 @@ interface Conversation {
   roomId: number | string;
   messages: ChatMessage[];
   historyFetched?: boolean;
+}
+
+function PlatformIcon({ platform }: { platform: string }) {
+  const p = (platform || "").toLowerCase();
+
+  if (p === "facebook") return <FaFacebookF aria-label="Facebook" />;
+  if (p === "whatsapp") return <FaWhatsapp aria-label="WhatsApp" />;
+  if (p === "instagram") return <FaInstagram aria-label="Instagram" />;
+  if (p === "telegram") return <FaTelegramPlane aria-label="Telegram" />;
+  if (p === "sms") return <MdSms aria-label="SMS" />;
+
+  const fallback = (platform || "?").trim().charAt(0).toUpperCase() || "?";
+  return <span aria-label={platform || "Unknown"}>{fallback}</span>;
 }
 
 export default function ChatPage() {
@@ -371,14 +386,6 @@ export default function ChatPage() {
         <div className="flex flex-col gap-4">
           {profiles.map((p) => {
             const isActive = p.platform === selectedPlatform;
-            const label =
-              p.platform === "facebook"
-                ? "F"
-                : p.platform === "whatsapp"
-                ? "W"
-                : p.platform === "instagram"
-                ? "I"
-                : p.platform.charAt(0).toUpperCase();
             return (
               <button
                 key={`${p.platform}-${p.profile_id}`}
@@ -390,7 +397,9 @@ export default function ChatPage() {
                       : "bg-[#1b1f2b] text-gray-300 hover:bg-[#24293a]"
                   }`}
               >
-                {label}
+                <span className="text-lg leading-none">
+                  <PlatformIcon platform={p.platform} />
+                </span>
               </button>
             );
           })}
@@ -453,7 +462,12 @@ export default function ChatPage() {
                   </span>
                   {c.platform && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 uppercase text-gray-400">
-                      {c.platform}
+                      <span className="inline-flex items-center gap-1">
+                        <span className="text-[12px] leading-none">
+                          <PlatformIcon platform={c.platform} />
+                        </span>
+                        <span>{c.platform}</span>
+                      </span>
                     </span>
                   )}
                 </div>
@@ -481,7 +495,12 @@ export default function ChatPage() {
                 </div>
               </div>
               <div className="text-xs text-gray-400">
-                {selectedConversation.platform.toUpperCase()}
+                <span className="inline-flex items-center gap-2">
+                  <span className="text-base leading-none">
+                    <PlatformIcon platform={selectedConversation.platform} />
+                  </span>
+                  <span className="uppercase">{selectedConversation.platform}</span>
+                </span>
               </div>
             </>
           ) : (
