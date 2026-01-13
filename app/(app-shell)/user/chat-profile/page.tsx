@@ -17,6 +17,7 @@ type ChatProfileItem = {
   id: number;
   name: string;
   platform: Platform;
+  profile_id?: string;
 };
 
 // NOTE: NEXT_PUBLIC_API_BASE_URL already ends with `/api` (per existing code),
@@ -65,6 +66,13 @@ function normalizeProfiles(payload: unknown): ChatProfileItem[] {
     .filter((p) => isRecord(p))
     .map((p) => {
       const id = typeof p.id === "number" ? p.id : Number(p.id);
+      const profileIdRaw = (p as UnknownRecord).profile_id;
+      const profile_id =
+        typeof profileIdRaw === "string"
+          ? profileIdRaw
+          : typeof profileIdRaw === "number"
+            ? String(profileIdRaw)
+            : undefined;
       return {
         id: Number.isFinite(id) ? id : -1,
         name: typeof p.name === "string" ? p.name : String(p.name ?? ""),
@@ -72,6 +80,7 @@ function normalizeProfiles(payload: unknown): ChatProfileItem[] {
           typeof p.platform === "string" && p.platform.trim()
             ? p.platform
             : "unknown",
+        profile_id,
       };
     })
     .filter((p) => p.id !== -1);
@@ -212,7 +221,7 @@ export default function ChatProfilePage() {
                             <div>
                               <div className="font-semibold leading-tight">{p.name || "(Unnamed)"}</div>
                               <div className="text-xs text-gray-400 mt-1">
-                                ID: <span className="text-gray-200">{p.id}</span>
+                                Profile ID: <span className="text-gray-200">{p.profile_id || "—"}</span>
                               </div>
                             </div>
                             {(() => {
