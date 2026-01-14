@@ -1,7 +1,7 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FaFacebookF, FaInstagram, FaTelegramPlane, FaWhatsapp } from "react-icons/fa";
 import { MdSms } from "react-icons/md";
 
@@ -54,7 +54,6 @@ export default function ChatPage() {
   const [conversations, setConversations] = useState<Record<string, Conversation>>({});
   const [selectedPlatform, setSelectedPlatform] = useState<Platform | null>(null);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
-  const [pendingMessage, setPendingMessage] = useState("");
 
   const selectedConversation = selectedConversationId
     ? conversations[selectedConversationId] ?? null
@@ -147,7 +146,7 @@ export default function ChatPage() {
           const direction: "incoming" | "outgoing" =
             data.message_type === "outgoing" ? "outgoing" : "incoming";
 
-          let timestamp = data.timestamp ?? new Date().toISOString();
+          const timestamp = data.timestamp ?? new Date().toISOString();
 
           const convId = `${platform}:${clientId}`;
           console.log("[WS DEBUG] Processing 'new_message'", {
@@ -298,47 +297,6 @@ export default function ChatPage() {
 
     fetchHistory();
   }, [selectedConversationId, accessToken, selectedConversation?.historyFetched]);
-
-  /* ─────────────────────────────
-     2) Sending a message
-  ───────────────────────────── */
-  const handleSend = (e: FormEvent) => {
-    e.preventDefault();
-    if (!pendingMessage.trim() || !selectedConversation || !wsRef.current) return;
-
-    const payload = {
-      type: "send_message",
-      room_id: selectedConversation.roomId,
-      platform: selectedConversation.platform,
-      client_id: selectedConversation.clientId,
-      message: pendingMessage.trim(),
-    };
-
-    wsRef.current.send(JSON.stringify(payload));
-
-    // Optimistic UI update (outgoing)
-    const now = new Date().toISOString();
-    const msg: ChatMessage = {
-      id: `${now}-outgoing-${Math.random()}`,
-      platform: selectedConversation.platform,
-      clientId: selectedConversation.clientId,
-      roomId: selectedConversation.roomId,
-      text: pendingMessage.trim(),
-      direction: "outgoing",
-      timestamp: now,
-    };
-
-    setConversations((prev) => ({
-      ...prev,
-      [selectedConversation.id]: {
-        ...selectedConversation,
-        messages: [...selectedConversation.messages, msg],
-      },
-    }));
-
-    setPendingMessage("");
-    forceUpdate((n) => n + 1);
-  };
 
   /* ─────────────────────────────
      3) Derived data for UI
@@ -551,31 +509,6 @@ export default function ChatPage() {
           )}
         </div>
 
-        {/* Composer */}
-        <form
-          onSubmit={handleSend}
-          className="h-16 border-t border-white/5 px-6 flex items-center gap-3"
-        >
-          <input
-            type="text"
-            className="flex-1 bg-[#111521] rounded-full px-4 py-2 text-sm outline-none"
-            placeholder={
-              selectedConversation
-                ? "Type a message…"
-                : "Select a conversation to start chatting…"
-            }
-            value={pendingMessage}
-            onChange={(e) => setPendingMessage(e.target.value)}
-            disabled={!selectedConversation}
-          />
-          <button
-            type="submit"
-            disabled={!selectedConversation || !pendingMessage.trim()}
-            className="px-4 py-2 rounded-full bg-[#0b57d0] hover:bg-[#0843a8] text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Send
-          </button>
-        </form>
       </main>
     </div>
   );
