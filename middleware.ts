@@ -34,10 +34,6 @@
 //   matcher: ["/", "/login", "/signup", "/admin/:path*", "/user/:path*"],
 // };
 
-
-
-
-
 import type { JWT } from "next-auth/jwt";
 import { withAuth, type NextRequestWithAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
@@ -57,7 +53,7 @@ export default withAuth(
     // Some setups may nest custom fields differently; be defensive.
     const role = normalizeRole(
       (token as unknown as { role?: unknown })?.role ??
-        (token as unknown as { user?: { role?: unknown } })?.user?.role
+        (token as unknown as { user?: { role?: unknown } })?.user?.role,
     );
     const hasPlan = token?.hasPlan;
     const path = req.nextUrl.pathname;
@@ -84,7 +80,8 @@ export default withAuth(
     // User section must be a real "user" (not admin).
     if (path.startsWith("/user") && role !== "user") {
       if (!role) return NextResponse.redirect(new URL("/login", req.url));
-      if (role === "admin") return NextResponse.redirect(new URL("/admin/dashboard", req.url));
+      if (role === "admin")
+        return NextResponse.redirect(new URL("/admin/dashboard", req.url));
       if (process.env.NODE_ENV !== "production") {
         console.log("[middleware] deny user route", {
           path,
@@ -96,11 +93,11 @@ export default withAuth(
     }
 
     // Force Privacy Policy acceptance for all user pages.
-    // If the cookie isn't set, the user must stay on /user/policy.
-    if (path.startsWith("/user") && !path.startsWith("/user/policy")) {
+    // If the cookie isn't set, redirect to the public /policy page.
+    if (path.startsWith("/user")) {
       const accepted = req.cookies.get("policy_accepted")?.value === "true";
       if (!accepted) {
-        return NextResponse.redirect(new URL("/user/policy", req.url));
+        return NextResponse.redirect(new URL("/policy", req.url));
       }
     }
 
@@ -130,7 +127,7 @@ export default withAuth(
     pages: {
       signIn: "/login",
     },
-  }
+  },
 );
 
 export const config = {
