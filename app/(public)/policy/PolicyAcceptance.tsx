@@ -1,10 +1,8 @@
 "use client";
 
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
-
-type Props = {
-  initialAccepted?: boolean;
-};
 
 function getCookieValue(name: string): string | undefined {
   if (typeof document === "undefined") return undefined;
@@ -21,9 +19,11 @@ function setCookie(name: string, value: string, maxAgeSeconds: number) {
   document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAgeSeconds}; samesite=lax`;
 }
 
-export default function PolicyAcceptance({ initialAccepted }: Props) {
+export default function PolicyAcceptance() {
+  const router = useRouter();
+  const { data: session } = useSession();
   const [accepted, setAccepted] = useState(() => {
-    if (typeof window === "undefined") return initialAccepted ?? false;
+    if (typeof window === "undefined") return false;
 
     const cookieAccepted = getCookieValue("policy_accepted") === "true";
     let storageAccepted = false;
@@ -33,7 +33,6 @@ export default function PolicyAcceptance({ initialAccepted }: Props) {
       // ignore
     }
 
-    if (initialAccepted !== undefined) return initialAccepted;
     return cookieAccepted || storageAccepted;
   });
 
@@ -54,6 +53,15 @@ export default function PolicyAcceptance({ initialAccepted }: Props) {
                 localStorage.setItem("policy_accepted", "true");
               } catch {
                 // ignore
+              }
+
+              const rawRole = session?.user?.role;
+              const role =
+                typeof rawRole === "string" ? rawRole.trim().toLowerCase() : "";
+              if (role === "admin") {
+                router.replace("/admin/dashboard");
+              } else if (role === "user") {
+                router.replace("/user/dashboard");
               }
             } else {
               setCookie("policy_accepted", "", 0);
