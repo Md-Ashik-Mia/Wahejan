@@ -73,14 +73,6 @@
 // //   }
 // // );
 
-
-
-
-
-
-
-
-
 // lib/http/client.ts
 import axios, { AxiosHeaders, type InternalAxiosRequestConfig } from "axios";
 
@@ -91,7 +83,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL!;
  * Used by both userApi and adminApi.
  */
 function attachAuth(
-  config: InternalAxiosRequestConfig
+  config: InternalAxiosRequestConfig,
 ): InternalAxiosRequestConfig {
   if (typeof window !== "undefined") {
     const token = localStorage.getItem("access_token"); // set after login
@@ -104,7 +96,8 @@ function attachAuth(
       if (headers instanceof AxiosHeaders) {
         headers.set("Authorization", `Bearer ${token}`);
       } else {
-        (headers as Record<string, string | undefined>)["Authorization"] = `Bearer ${token}`;
+        (headers as Record<string, string | undefined>)["Authorization"] =
+          `Bearer ${token}`;
       }
     }
   }
@@ -113,7 +106,7 @@ function attachAuth(
 
 /** Attach client/device info only for public/auth calls (no auth required). */
 function attachClientInfo(
-  config: InternalAxiosRequestConfig
+  config: InternalAxiosRequestConfig,
 ): InternalAxiosRequestConfig {
   if (typeof window !== "undefined") {
     // Browser cannot override real User-Agent; use a custom header.
@@ -130,7 +123,6 @@ function attachClientInfo(
   }
   return config;
 }
-
 
 /** Generic API instance (can be used in server or client code) */
 export const api = axios.create({
@@ -172,10 +164,20 @@ userApi.interceptors.response.use(
   (r) => r,
   (err) => {
     if (err.response?.status === 401 && typeof window !== "undefined") {
-      window.location.href = "/login";
+      try {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+      } catch {
+        // ignore storage errors
+      }
+
+      const currentPath = window.location.pathname;
+      if (!currentPath.startsWith("/api/auth/signout")) {
+        window.location.href = "/api/auth/signout?callbackUrl=/login";
+      }
     }
     return Promise.reject(err);
-  }
+  },
 );
 
 // You can re-enable this later if you want auto redirects for admin errors
@@ -183,8 +185,18 @@ adminApi.interceptors.response.use(
   (r) => r,
   (err) => {
     if (err.response?.status === 401 && typeof window !== "undefined") {
-      window.location.href = "/login";
+      try {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+      } catch {
+        // ignore storage errors
+      }
+
+      const currentPath = window.location.pathname;
+      if (!currentPath.startsWith("/api/auth/signout")) {
+        window.location.href = "/api/auth/signout?callbackUrl=/login";
+      }
     }
     return Promise.reject(err);
-  }
+  },
 );
