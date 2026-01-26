@@ -1,9 +1,9 @@
 "use client";
-import React, { useEffect, useMemo, useState } from "react";
-import { useSession } from "next-auth/react";
-import axios from "axios";
 import { adminApi } from "@/lib/http/client";
+import axios from "axios";
+import { useSession } from "next-auth/react";
 import Image from "next/image";
+import { useEffect, useMemo, useState } from "react";
 
 type SessionWithAccessToken = { accessToken?: string };
 
@@ -55,7 +55,8 @@ function mapApiTeamMember(m: ApiTeamMember): TeamMember {
   const name = (m.name ?? "").toString() || "—";
   const email = (m.email ?? "").toString();
   const role = (m.role ?? "").toString();
-  const status: "Active" | "Inactive" = m.is_active === true ? "Active" : "Inactive";
+  const status: "Active" | "Inactive" =
+    m.is_active === true ? "Active" : "Inactive";
   const lastLogin = formatWhen(m.last_login);
   const invoiceDownload = formatWhen(m.invoices_download);
   const payments = formatWhen(m.payments);
@@ -91,6 +92,10 @@ export default function TeamMembersPage() {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
   const { data: session, status: sessionStatus } = useSession();
 
   useEffect(() => {
@@ -118,10 +123,12 @@ export default function TeamMembersPage() {
         const list: ApiTeamMember[] = Array.isArray(payload)
           ? (payload as ApiTeamMember[])
           : Array.isArray((payload as { results?: unknown })?.results)
-          ? (((payload as { results: ApiTeamMember[] }).results ?? []) as ApiTeamMember[])
-          : Array.isArray((payload as { data?: unknown })?.data)
-          ? (((payload as { data: ApiTeamMember[] }).data ?? []) as ApiTeamMember[])
-          : [];
+            ? (((payload as { results: ApiTeamMember[] }).results ??
+                []) as ApiTeamMember[])
+            : Array.isArray((payload as { data?: unknown })?.data)
+              ? (((payload as { data: ApiTeamMember[] }).data ??
+                  []) as ApiTeamMember[])
+              : [];
 
         const mapped = list.map(mapApiTeamMember).filter((m) => m.id !== 0);
 
@@ -142,7 +149,11 @@ export default function TeamMembersPage() {
       } catch (err) {
         if (axios.isAxiosError(err)) {
           const code = err.response?.status;
-          setError(code ? `Failed to load team members (${code}).` : "Failed to load team members.");
+          setError(
+            code
+              ? `Failed to load team members (${code}).`
+              : "Failed to load team members.",
+          );
         } else {
           setError("Failed to load team members.");
         }
@@ -154,12 +165,83 @@ export default function TeamMembersPage() {
     fetchTeamMembers();
   }, [session, sessionStatus]);
 
-  const hasData = useMemo(() => !loading && !error && teamMembers.length > 0, [error, loading, teamMembers.length]);
+  async function handleInviteAdmin() {
+    setInviteError(null);
+    setInviteSuccess(null);
+
+    if (!inviteEmail || !inviteEmail.includes("@")) {
+      setInviteError("Please enter a valid email address.");
+      return;
+    }
+
+    const token = getAccessToken(session);
+    if (!token) {
+      setInviteError("Missing access token.");
+      return;
+    }
+
+    setInviteLoading(true);
+    try {
+      await adminApi.post(
+        "/admin/create-admin/",
+        { email: inviteEmail },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+      setInviteSuccess("Invitation sent successfully.");
+      setInviteEmail("");
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        const msg =
+          err.response?.data?.error ||
+          err.response?.data?.detail ||
+          "Failed to send invitation.";
+        setInviteError(msg);
+      } else {
+        setInviteError("Failed to send invitation.");
+      }
+    } finally {
+      setInviteLoading(false);
+    }
+  }
+
+  const hasData = useMemo(
+    () => !loading && !error && teamMembers.length > 0,
+    [error, loading, teamMembers.length],
+  );
 
   return (
     <div className="min-h-screen bg-black text-white p-6 space-y-8">
       <h2 className="text-xl font-semibold">Admin Control Center</h2>
       <h3 className="text-lg font-medium">Team Members</h3>
+
+      {/* Add Admin Section */}
+      <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+        <input
+          type="email"
+          value={inviteEmail}
+          onChange={(e) => setInviteEmail(e.target.value)}
+          placeholder="Enter admin email"
+          className="bg-[#272727] border border-gray-700 rounded-md px-4 py-2 text-white w-72 focus:outline-none focus:border-blue-500"
+          disabled={inviteLoading}
+        />
+        <button
+          onClick={handleInviteAdmin}
+          disabled={inviteLoading}
+          className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-md font-semibold transition disabled:opacity-60"
+        >
+          {inviteLoading ? "Adding..." : "Add Admin"}
+        </button>
+        {inviteError && (
+          <span className="text-red-400 text-sm ml-2">{inviteError}</span>
+        )}
+        {inviteSuccess && (
+          <span className="text-green-400 text-sm ml-2">{inviteSuccess}</span>
+        )}
+      </div>
 
       {loading ? (
         <p className="text-gray-400">Loading admins...</p>
@@ -168,69 +250,73 @@ export default function TeamMembersPage() {
       ) : null}
 
       <div className="grid md:grid-cols-1 gap-6">
-        {hasData ? teamMembers.map((member) => (
-          <div
-            key={member.id}
-            className="bg-[#272727]  p-5 rounded-xl shadow-md hover:bg-gray-750 transition-all duration-200"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                {member.avatarUrl ? (
-                  <Image
-                    loader={passthroughLoader}
-                    unoptimized
-                    src={member.avatarUrl}
-                    alt={member.name}
-                    width={48}
-                    height={48}
-                    className="w-12 h-12 rounded-full object-cover border border-gray-600"
-                  />
-                ) : (
-                  <div className="w-12 h-12 rounded-full border border-gray-600 bg-black/30 flex items-center justify-center font-semibold text-gray-200">
-                    {getInitials(member.name, member.email)}
+        {hasData ? (
+          teamMembers.map((member) => (
+            <div
+              key={member.id}
+              className="bg-[#272727]  p-5 rounded-xl shadow-md hover:bg-gray-750 transition-all duration-200"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  {member.avatarUrl ? (
+                    <Image
+                      loader={passthroughLoader}
+                      unoptimized
+                      src={member.avatarUrl}
+                      alt={member.name}
+                      width={48}
+                      height={48}
+                      className="w-12 h-12 rounded-full object-cover border border-gray-600"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full border border-gray-600 bg-black/30 flex items-center justify-center font-semibold text-gray-200">
+                      {getInitials(member.name, member.email)}
+                    </div>
+                  )}
+                  <div>
+                    <p className="font-semibold text-base">{member.name}</p>
+                    <p className="text-gray-400 text-sm">{member.email}</p>
+                    <p className="text-gray-500 text-xs">Role: {member.role}</p>
                   </div>
-                )}
-                <div>
-                  <p className="font-semibold text-base">{member.name}</p>
-                  <p className="text-gray-400 text-sm">{member.email}</p>
-                  <p className="text-gray-500 text-xs">Role: {member.role}</p>
                 </div>
+
+                <span
+                  className={`text-xs px-3 py-1 rounded-full font-medium ${
+                    member.status === "Active"
+                      ? "bg-green-900/40 text-green-400"
+                      : "bg-red-900/40 text-red-400"
+                  }`}
+                >
+                  {member.status}
+                </span>
               </div>
 
-              <span
-                className={`text-xs px-3 py-1 rounded-full font-medium ${
-                  member.status === "Active"
-                    ? "bg-green-900/40 text-green-400"
-                    : "bg-red-900/40 text-red-400"
-                }`}
-              >
-                {member.status}
-              </span>
-            </div>
-
-            <div className="border-t border-gray-700 pt-3">
-              <p className="text-sm font-medium mb-2">Activity</p>
-              <div className="text-gray-300 text-sm space-y-1">
-                <div className="flex justify-between border-b border-gray-700 py-1">
-                  <span>Last Login</span>
-                  <span className="text-gray-400">{member.lastLogin}</span>
-                </div>
-                <div className="flex justify-between border-b border-gray-700 py-1">
-                  <span>New User Add</span>
-                  <span className="text-gray-400">{member.newUsers}</span>
-                </div>
-                <div className="flex justify-between border-b border-gray-700 py-1">
-                  <span>Invoice Download</span>
-                  <span className="text-gray-400">{member.invoiceDownload}</span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span>Payments</span>
-                  <span className="text-gray-400">{member.payments}</span>
+              <div className="border-t border-gray-700 pt-3">
+                <p className="text-sm font-medium mb-2">Activity</p>
+                <div className="text-gray-300 text-sm space-y-1">
+                  <div className="flex justify-between border-b border-gray-700 py-1">
+                    <span>Last Login</span>
+                    <span className="text-gray-400">{member.lastLogin}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-gray-700 py-1">
+                    <span>New User Add</span>
+                    <span className="text-gray-400">{member.newUsers}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-gray-700 py-1">
+                    <span>Invoice Download</span>
+                    <span className="text-gray-400">
+                      {member.invoiceDownload}
+                    </span>
+                  </div>
+                  <div className="flex justify-between py-1">
+                    <span>Payments</span>
+                    <span className="text-gray-400">{member.payments}</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )) : !loading && !error ? (
+          ))
+        ) : !loading && !error ? (
           <p className="text-gray-400">No admins found.</p>
         ) : null}
       </div>
