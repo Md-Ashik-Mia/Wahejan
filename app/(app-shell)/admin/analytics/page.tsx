@@ -1,9 +1,9 @@
 "use client";
-import React, { useEffect, useMemo, useState } from "react";
+import { adminApi } from "@/lib/http/client";
+import axios from "axios";
 import { BarChart3, DollarSign, MessageCircle, Send } from "lucide-react";
 import { useSession } from "next-auth/react";
-import axios from "axios";
-import { adminApi } from "@/lib/http/client";
+import { useEffect, useMemo, useState } from "react";
 
 type SessionWithAccessToken = { accessToken?: string };
 
@@ -48,20 +48,26 @@ function formatDelta(current: number, previous: number): string {
   return `${sign}${pct.toFixed(1)}% from previous`;
 }
 
+const TIME_SCOPE_MAP: Record<"today" | "month" | "year", string> = {
+  today: "today",
+  month: "last_month",
+  year: "last_year",
+};
+
 const AnalyticsDashboard = () => {
-  const [timeFilter, setTimeFilter] = useState<"today" | "month" | "year">("month");
+  const [timeFilter, setTimeFilter] = useState<"today" | "month" | "year">(
+    "month",
+  );
   const { data: session, status: sessionStatus } = useSession();
   const [stats, setStats] = useState<PerformanceAnalyticsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const timeScopeParam = useMemo(() => {
-    // Backend screenshot shows `time_scope: "monthly"`.
-    // We send a best-effort param; backend can ignore it safely.
-    if (timeFilter === "today") return "daily";
-    if (timeFilter === "year") return "yearly";
-    return "monthly";
-  }, [timeFilter]);
+  // Use correct API param mapping
+  const timeScopeParam = useMemo(
+    () => TIME_SCOPE_MAP[timeFilter],
+    [timeFilter],
+  );
 
   useEffect(() => {
     if (sessionStatus === "loading") return;
@@ -78,21 +84,29 @@ const AnalyticsDashboard = () => {
         setLoading(true);
         setError(null);
 
+        // Use correct API endpoint and params
         const res = await adminApi.get<PerformanceAnalyticsResponse>(
           "/admin/performance-analytics/",
           {
-            params: { time_scope: timeScopeParam },
+            params: {
+              time_scope: timeScopeParam,
+              timezone: "Asia/Dhaka",
+            },
             headers: {
               Authorization: `Bearer ${token}`,
             },
-          }
+          },
         );
 
         setStats(res.data ?? null);
       } catch (err) {
         if (axios.isAxiosError(err)) {
           const code = err.response?.status;
-          setError(code ? `Failed to load analytics (${code}).` : "Failed to load analytics.");
+          setError(
+            code
+              ? `Failed to load analytics (${code}).`
+              : "Failed to load analytics.",
+          );
         } else {
           setError("Failed to load analytics.");
         }
@@ -108,7 +122,9 @@ const AnalyticsDashboard = () => {
   const messagesSent = numberOrZero(stats?.total_message_sent?.current);
   const messagesSentPrev = numberOrZero(stats?.total_message_sent?.previous);
   const messagesReceived = numberOrZero(stats?.total_message_received?.current);
-  const messagesReceivedPrev = numberOrZero(stats?.total_message_received?.previous);
+  const messagesReceivedPrev = numberOrZero(
+    stats?.total_message_received?.previous,
+  );
   const monthlyRevenue = numberOrZero(stats?.monthly_revenue?.current);
   const monthlyRevenuePrev = numberOrZero(stats?.monthly_revenue?.previous);
   const totalRevenue = numberOrZero(stats?.total_revenue);
@@ -152,7 +168,7 @@ const AnalyticsDashboard = () => {
       monthlyRevenue,
       monthlyRevenuePrev,
       totalRevenue,
-    ]
+    ],
   );
 
   return (
@@ -179,7 +195,7 @@ const AnalyticsDashboard = () => {
                 : "bg-gray-800 hover:bg-gray-700 text-gray-300"
             }`}
           >
-            Last Months
+            Last Month
           </button>
           <button
             onClick={() => setTimeFilter("year")}
@@ -189,7 +205,7 @@ const AnalyticsDashboard = () => {
                 : "bg-gray-800 hover:bg-gray-700 text-gray-300"
             }`}
           >
-            Last Years
+            Last Year
           </button>
         </div>
       </div>
@@ -211,7 +227,9 @@ const AnalyticsDashboard = () => {
               <span className={card.color}>{card.icon}</span>
             </div>
             <p className="text-2xl font-semibold mb-1">
-              {typeof card.value === "number" ? card.value.toLocaleString() : card.value}
+              {typeof card.value === "number"
+                ? card.value.toLocaleString()
+                : card.value}
             </p>
             <p className="text-gray-300 text-sm">{card.label}</p>
             <p
@@ -229,4 +247,3 @@ const AnalyticsDashboard = () => {
 };
 
 export default AnalyticsDashboard;
-

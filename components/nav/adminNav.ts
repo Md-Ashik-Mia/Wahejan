@@ -8,7 +8,7 @@ export const adminNav = [
   { label: "Team",  href: "/admin/team",  icon: "/team.png" },
   { label: "Overview",  href: "/admin/overview",  icon: "/overview.png" },
   // { label: "Payment & Report",  href: "/admin/payment&report",  icon: "/paymentandreport.png" },
-  {
-    label:"Security & Settings", href:"/admin/settings", icon:"/settings.png"
-  }
+  // {
+  //   label:"Security & Settings", href:"/admin/settings", icon:"/settings.png"
+  // }
 ];
