@@ -385,14 +385,7 @@ const AIKnowledgeBase: React.FC = () => {
         </div>
       </section>
 
-      {/* Import/Export */}
-      <section>
-        <h2 className="text-lg font-semibold bg-blue-600 px-4 py-2 rounded-t-lg">Import/Export</h2>
-        <div className="bg-[#272727] p-6 rounded-b-lg">
-          <p className="text-gray-300 mb-3">Upload files to add information in bulk or export your AI knowledge for review.</p>
-          <button className="bg-blue-600 px-4 py-2 rounded-lg">⬇️ Export</button>
-        </div>
-      </section>
+
     </div>
   );
 };

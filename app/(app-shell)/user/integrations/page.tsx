@@ -293,18 +293,20 @@ const IntegrationPage: React.FC = () => {
             </div>
 
             {/* Toggle Switch */}
-            <div className="flex justify-end mt-4">
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={active}
-                  disabled={toggleDisabled || loading}
-                  onChange={() => void handleToggle(integration.platform, !active)}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
+            {active && (
+              <div className="flex justify-end mt-4">
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={active}
+                    disabled={toggleDisabled || loading}
+                    onChange={() => void handleToggle(integration.platform, !active)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+            )}
           </div>
         );
         })}

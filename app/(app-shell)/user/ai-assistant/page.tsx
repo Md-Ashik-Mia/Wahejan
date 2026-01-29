@@ -1329,7 +1329,7 @@ const AIAssistantDashboard: React.FC = () => {
             </select>
             <input
               type="time"
-              className="bg-gray-900 p-2 rounded-lg w-28"
+              className="bg-gray-900 p-2 rounded-lg w-36"
               value={openingForm.start}
               onChange={(e) =>
                 setOpeningForm((f) => ({ ...f, start: e.target.value }))
@@ -1339,7 +1339,7 @@ const AIAssistantDashboard: React.FC = () => {
             <span>to</span>
             <input
               type="time"
-              className="bg-gray-900 p-2 rounded-lg w-28"
+              className="bg-gray-900 p-2 rounded-lg w-36"
               value={openingForm.end}
               onChange={(e) =>
                 setOpeningForm((f) => ({ ...f, end: e.target.value }))
