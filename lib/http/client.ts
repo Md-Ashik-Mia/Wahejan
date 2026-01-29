@@ -82,11 +82,29 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL!;
  * Attach Authorization header from localStorage.
  * Used by both userApi and adminApi.
  */
-function attachAuth(
+async function attachAuth(
   config: InternalAxiosRequestConfig,
-): InternalAxiosRequestConfig {
+): Promise<InternalAxiosRequestConfig> {
   if (typeof window !== "undefined") {
-    const token = localStorage.getItem("access_token"); // set after login
+    let token = localStorage.getItem("access_token");
+
+    // Fail-safe: If local storage is empty, try fetching from session once (resolves race conditions)
+    if (!token) {
+      try {
+        const { getSession } = await import("next-auth/react");
+        const session = await getSession();
+        const sessionToken = (session as any)?.accessToken;
+        if (typeof sessionToken === "string" && sessionToken) {
+          token = sessionToken;
+          localStorage.setItem("access_token", token);
+          const refresh = (session as any)?.refreshToken;
+          if (refresh) localStorage.setItem("refresh_token", refresh);
+        }
+      } catch (err) {
+        // silent fail, let the 401 interceptor handle it
+      }
+    }
+
     if (token) {
       if (!config.headers) {
         config.headers = new AxiosHeaders();
