@@ -51,11 +51,38 @@ export default function SignupPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [error, setError] = useState("");
   const router = useRouter();
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
+    setError("");
+
+    // Password Validation
+    if (password.length < 6) {
+        setError("Password must be at least 6 characters long.");
+        return;
+    }
+    if (!/[A-Z]/.test(password)) {
+        setError("Password must contain at least one uppercase letter.");
+        return;
+    }
+    if (!/[0-9]/.test(password)) {
+        setError("Password must contain at least one number.");
+        return;
+    }
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+        setError("Password must contain at least one special character.");
+        return;
+    }
+    if (password !== confirmPassword) {
+        setError("Passwords do not match.");
+        return;
+    }
+
     try {
       const res = await api.post("/auth/users/", { name, email, password });
       if (res.status === 201 || res.status === 200) {
@@ -67,7 +94,7 @@ export default function SignupPage() {
       }
     } catch (err: any) {
       console.error("Signup error:", err.response?.data || err.message);
-      alert("Signup failed");
+      setError(err.response?.data?.message || "Signup failed");
     }
   }
 
@@ -99,9 +126,25 @@ export default function SignupPage() {
             onClick={() => setShowPassword(!showPassword)}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
           >
-            {showPassword ? <FaEyeSlash size={20} /> : <FaEye size={20} />}
+            {showPassword ? <FaEye size={20} /> : <FaEyeSlash size={20} />}
           </button>
         </div>
+        <div className="relative">
+          <input
+            type={showConfirmPassword ? "text" : "password"}
+            placeholder="Confirm your password"
+            className="w-full bg-[#1e2837] px-4 py-3 rounded-md outline-none pr-10"
+            onChange={(e) => setConfirmPassword(e.target.value)}
+          />
+          <button
+            type="button"
+            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+          >
+            {showConfirmPassword ? <FaEye size={20} /> : <FaEyeSlash size={20} />}
+          </button>
+        </div>
+        {error && <p className="text-red-500 text-sm">{error}</p>}
         <button
           type="submit"
           className="w-full bg-[#0B57D0] hover:bg-[#0843a8] py-3 rounded-md font-semibold"

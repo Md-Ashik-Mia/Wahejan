@@ -294,7 +294,7 @@ export default function LoginPage() {
             onClick={() => setShowPassword(!showPassword)}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
           >
-            {showPassword ? <FaEyeSlash size={20} /> : <FaEye size={20} />}
+            {showPassword ? <FaEye size={20} /> : <FaEyeSlash size={20} />}
           </button>
         </div>
         <button
