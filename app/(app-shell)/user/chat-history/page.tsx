@@ -368,12 +368,7 @@ export default function ChatPage() {
       <section className="w-80 flex flex-col bg-[#080b12] border-r border-white/5">
         <div className="px-4 py-3 border-b border-white/5">
           <h2 className="text-lg font-semibold">Messages History</h2>
-          <div className="mt-3">
-            <input
-              className="w-full bg-[#111521] rounded-md px-3 py-2 text-sm outline-none"
-              placeholder="Search"
-            />
-          </div>
+
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -482,7 +477,7 @@ export default function ChatPage() {
                     }`}
                   >
                     <div
-                      className={`max-w-[70%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap
+                      className={`max-w-[70%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap break-words break-all
                       ${
                         isOutgoing
                           ? "bg-[#0b57d0] text-white rounded-br-none"
