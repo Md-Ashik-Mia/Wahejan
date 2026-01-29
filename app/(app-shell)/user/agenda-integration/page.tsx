@@ -347,6 +347,15 @@ const AgendaIntegrationPage: React.FC = () => {
     const end_time = toApiDateTime(formData.endDate, formData.endTime);
     if (!start_time || !end_time) return;
 
+    // Validate that start time is before end time
+    const startObj = new Date(start_time);
+    const endObj = new Date(end_time);
+
+    if (startObj >= endObj) {
+      setCreateBookingError("Start time must be before end time.");
+      return;
+    }
+
     const payload = {
       title,
       start_time,
@@ -670,47 +679,54 @@ const AgendaIntegrationPage: React.FC = () => {
                 margin: 0;
               }
               .agenda-rdp .rdp-weekdays {
+                display: flex;
                 width: 100%;
                 justify-content: space-between;
+                margin-bottom: 1rem;
               }
               .agenda-rdp .rdp-weekday {
                 text-align: center;
-              }
-              .agenda-rdp .rdp-weekday {
+                display: flex;
+                justify-content: center;
+                align-items: center;
                 color: rgba(156, 163, 175, 1);
-                font-size: 0.95rem;
+                font-size: 1.1rem;
                 font-weight: 500;
-                width: var(--cell-size);
+                width: 3.5rem; /* Fixed width matching cells */
               }
 
               .agenda-rdp .rdp-week {
+                display: flex;
                 width: 100%;
                 justify-content: space-between;
+                margin-bottom: 0.5rem;
               }
 
               .agenda-rdp .rdp-day {
                 display: flex;
                 justify-content: center;
-                width: var(--cell-size);
+                width: 3.5rem;
               }
 
-              /* Make day buttons look like the app circles */
+              /* Make day buttons larger and circular */
               .agenda-rdp button[data-day] {
-                width: var(--cell-size) !important;
-                height: var(--cell-size) !important;
+                width: 3.5rem !important;
+                height: 3.5rem !important;
                 border-radius: 9999px !important;
                 margin: 0 auto;
-                font-size: 0.95rem;
+                font-size: 1.5rem; /* Larger numbers */
                 font-weight: 500;
                 border: 1px solid transparent;
               }
 
               @media (min-width: 768px) {
                 .agenda-rdp button[data-day] {
-                  font-size: 1.05rem;
+                  width: 4.5rem !important;
+                  height: 4.5rem !important;
+                  font-size: 1.75rem;
                 }
-                .agenda-rdp .rdp-weekday {
-                  font-size: 1.05rem;
+                .agenda-rdp .rdp-weekday, .agenda-rdp .rdp-day {
+                  width: 4.5rem;
                 }
               }
 

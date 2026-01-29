@@ -107,7 +107,7 @@ import { getSession, signIn } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { FaGoogle } from "react-icons/fa";
+import { FaEye, FaEyeSlash, FaGoogle } from "react-icons/fa";
 
 type ClientSession = {
   user?: {
@@ -146,6 +146,7 @@ async function waitForSessionReady(maxMs = 2000, intervalMs = 100): Promise<Clie
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const router = useRouter();
 
@@ -279,14 +280,23 @@ export default function LoginPage() {
           value={email}
           disabled={isLoggingIn}
         />
-        <input
-          type="password"
-          placeholder="Enter your password"
-          className="w-full bg-[#1e2837] px-4 py-3 rounded-md outline-none"
-          onChange={(e) => setPassword(e.target.value)}
-          value={password}
-          disabled={isLoggingIn}
-        />
+        <div className="relative">
+          <input
+            type={showPassword ? "text" : "password"}
+            placeholder="Enter your password"
+            className="w-full bg-[#1e2837] px-4 py-3 rounded-md outline-none pr-10"
+            onChange={(e) => setPassword(e.target.value)}
+            value={password}
+            disabled={isLoggingIn}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+          >
+            {showPassword ? <FaEye size={20} /> : <FaEyeSlash size={20} />}
+          </button>
+        </div>
         <button
           type="submit"
           disabled={isLoggingIn}

@@ -27,9 +27,26 @@ const NOT_ACTIVE_SENTINEL = "__NOT_ACTIVE__";
 function getApiErrorMessage(error: unknown, fallback: string): string {
   if (axios.isAxiosError(error)) {
     const data = error.response?.data;
-    if (isRecord(data) && typeof data.detail === "string" && data.detail.trim()) {
-      return data.detail;
+    if (!data) return error.message || fallback;
+
+    if (Array.isArray(data)) {
+      return data.join(" ") || fallback;
     }
+
+    if (isRecord(data)) {
+      if (typeof data.detail === "string" && data.detail.trim()) {
+        return data.detail;
+      }
+      if (Array.isArray(data.detail)) {
+        return data.detail.join(" ");
+      }
+
+      // Handle simple key-value errors or validation errors
+      const firstValue = Object.values(data)[0];
+      if (typeof firstValue === "string") return firstValue;
+      if (Array.isArray(firstValue) && typeof firstValue[0] === "string") return firstValue[0];
+    }
+
     if (typeof error.message === "string" && error.message.trim()) return error.message;
     return fallback;
   }
@@ -276,18 +293,20 @@ const IntegrationPage: React.FC = () => {
             </div>
 
             {/* Toggle Switch */}
-            <div className="flex justify-end mt-4">
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={active}
-                  disabled={toggleDisabled || loading}
-                  onChange={() => void handleToggle(integration.platform, !active)}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
+            {active && (
+              <div className="flex justify-end mt-4">
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={active}
+                    disabled={toggleDisabled || loading}
+                    onChange={() => void handleToggle(integration.platform, !active)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+            )}
           </div>
         );
         })}
