@@ -45,12 +45,13 @@ import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { FaGoogle } from "react-icons/fa";
+import { FaEye, FaEyeSlash, FaGoogle } from "react-icons/fa";
 
 export default function SignupPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
 
   async function handleSignup(e: React.FormEvent) {
@@ -86,12 +87,21 @@ export default function SignupPage() {
           className="w-full bg-[#1e2837] px-4 py-3 rounded-md outline-none"
           onChange={(e) => setEmail(e.target.value)}
         />
-        <input
-          type="password"
-          placeholder="Enter your password"
-          className="w-full bg-[#1e2837] px-4 py-3 rounded-md outline-none"
-          onChange={(e) => setPassword(e.target.value)}
-        />
+        <div className="relative">
+          <input
+            type={showPassword ? "text" : "password"}
+            placeholder="Enter your password"
+            className="w-full bg-[#1e2837] px-4 py-3 rounded-md outline-none pr-10"
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+          >
+            {showPassword ? <FaEyeSlash size={20} /> : <FaEye size={20} />}
+          </button>
+        </div>
         <button
           type="submit"
           className="w-full bg-[#0B57D0] hover:bg-[#0843a8] py-3 rounded-md font-semibold"
