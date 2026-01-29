@@ -319,13 +319,28 @@ function normalizeOpeningSlot(raw: unknown): OpeningSlot {
 function getApiErrorMessage(error: unknown, fallback: string): string {
   if (axios.isAxiosError(error)) {
     const data = error.response?.data;
-    if (isRecord(data)) {
-      const detail = data.detail;
-      const message = data.message;
-      if (typeof detail === "string" && detail.trim()) return detail;
-      if (typeof message === "string" && message.trim()) return message;
+    if (!data) return error.message || fallback;
 
-      // Common validation errors are shaped like { field: ["msg"] } or { field: "msg" }
+    if (Array.isArray(data)) {
+      return data.join(" ") || fallback;
+    }
+
+    if (isRecord(data)) {
+      if (typeof data.detail === "string" && data.detail.trim()) {
+        return data.detail;
+      }
+      if (Array.isArray(data.detail)) {
+        return data.detail.join(" ");
+      }
+      if (typeof data.message === "string" && data.message.trim()) {
+        return data.message;
+      }
+
+      // Handle simple key-value errors or validation errors
+      const firstValue = Object.values(data)[0];
+      if (typeof firstValue === "string") return firstValue;
+      if (Array.isArray(firstValue) && typeof firstValue[0] === "string") return firstValue[0];
+
       try {
         const text = JSON.stringify(data);
         if (text && text !== "{}") return text;
@@ -333,9 +348,10 @@ function getApiErrorMessage(error: unknown, fallback: string): string {
         // ignore
       }
     }
-    if (typeof error.message === "string" && error.message.trim()) return error.message;
-  }
 
+    if (typeof error.message === "string" && error.message.trim()) return error.message;
+    return fallback;
+  }
   if (error instanceof Error && error.message.trim()) return error.message;
   return fallback;
 }

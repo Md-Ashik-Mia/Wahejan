@@ -27,9 +27,26 @@ const NOT_ACTIVE_SENTINEL = "__NOT_ACTIVE__";
 function getApiErrorMessage(error: unknown, fallback: string): string {
   if (axios.isAxiosError(error)) {
     const data = error.response?.data;
-    if (isRecord(data) && typeof data.detail === "string" && data.detail.trim()) {
-      return data.detail;
+    if (!data) return error.message || fallback;
+
+    if (Array.isArray(data)) {
+      return data.join(" ") || fallback;
     }
+
+    if (isRecord(data)) {
+      if (typeof data.detail === "string" && data.detail.trim()) {
+        return data.detail;
+      }
+      if (Array.isArray(data.detail)) {
+        return data.detail.join(" ");
+      }
+
+      // Handle simple key-value errors or validation errors
+      const firstValue = Object.values(data)[0];
+      if (typeof firstValue === "string") return firstValue;
+      if (Array.isArray(firstValue) && typeof firstValue[0] === "string") return firstValue[0];
+    }
+
     if (typeof error.message === "string" && error.message.trim()) return error.message;
     return fallback;
   }
