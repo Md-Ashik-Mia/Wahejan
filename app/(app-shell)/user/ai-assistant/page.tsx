@@ -373,6 +373,8 @@ type CompanyData = {
   website: string | null;
   summary: string | null;
   user: number | null;
+  greeting: string | null;
+  concurrent_booking_limit: number | null;
 };
 
 function normalizeCompany(raw: unknown): CompanyData {
@@ -398,6 +400,8 @@ function normalizeCompany(raw: unknown): CompanyData {
     website: toNullableString(r.website),
     summary: toNullableString(r.summary),
     user: toNullableNumber(r.user),
+    greeting: toNullableString(r.greeting),
+    concurrent_booking_limit: toNullableNumber(r.concurrent_booking_limit),
   };
 }
 
@@ -539,6 +543,8 @@ const AIAssistantDashboard: React.FC = () => {
     city: "",
     country: "",
     website: "",
+    greeting: "",
+    concurrent_booking_limit: 1,
   });
 
   const toneInitializedRef = useRef(false);
@@ -564,6 +570,8 @@ const AIAssistantDashboard: React.FC = () => {
         city: normalized.city ?? "",
         country: normalized.country ?? "",
         website: normalized.website ?? "",
+        greeting: normalized.greeting ?? "",
+        concurrent_booking_limit: normalized.concurrent_booking_limit ?? 1,
       });
     } catch (e: unknown) {
       setCompanyError(getApiErrorMessage(e, "Failed to load company details"));
@@ -593,6 +601,8 @@ const AIAssistantDashboard: React.FC = () => {
         training_files: current?.training_files ?? null,
         website: emptyToNull(companyForm.website),
         summary: current?.summary ?? null,
+        greeting: emptyToNull(companyForm.greeting),
+        concurrent_booking_limit: Number(companyForm.concurrent_booking_limit) || 1,
       };
 
       const res = await requestWithSlashFallback(
@@ -610,6 +620,8 @@ const AIAssistantDashboard: React.FC = () => {
         city: normalized.city ?? "",
         country: normalized.country ?? "",
         website: normalized.website ?? "",
+        greeting: normalized.greeting ?? "",
+        concurrent_booking_limit: normalized.concurrent_booking_limit ?? 1,
       });
     } catch (e: unknown) {
       setCompanyError(getApiErrorMessage(e, "Failed to update company details"));
@@ -1204,6 +1216,26 @@ const AIAssistantDashboard: React.FC = () => {
             value={companyForm.description}
             onChange={(e) => setCompanyForm((f) => ({ ...f, description: e.target.value }))}
           />
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-semibold text-gray-300 ml-1">AI Greeting</label>
+            <input
+              className="bg-gray-900 p-3 rounded-lg"
+              placeholder="e.g. Assalamu Alaikum"
+              value={companyForm.greeting}
+              onChange={(e) => setCompanyForm((f) => ({ ...f, greeting: e.target.value }))}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-semibold text-gray-300 ml-1">Concurrent Booking Limit</label>
+            <input
+              type="number"
+              min={1}
+              className="bg-gray-900 p-3 rounded-lg"
+              placeholder="1"
+              value={companyForm.concurrent_booking_limit}
+              onChange={(e) => setCompanyForm((f) => ({ ...f, concurrent_booking_limit: Number(e.target.value) }))}
+            />
+          </div>
         </div>
 
 
