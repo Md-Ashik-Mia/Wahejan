@@ -149,6 +149,7 @@ function deriveRoleFromBackendUser(user: unknown): string {
   // Prefer explicit role strings.
   const rawRole = normalizeRole(u.role);
   if (rawRole) {
+    // Common synonyms
     if (rawRole === "administrator" || rawRole === "superadmin" || rawRole === "super_admin") return "admin";
     return rawRole;
   }
@@ -157,17 +158,6 @@ function deriveRoleFromBackendUser(user: unknown): string {
   if (isTrue(u.is_admin) || isTrue(u.is_staff) || isTrue(u.is_superuser)) return "admin";
 
   return "";
-}
-
-function normalizeImageUrl(url: unknown): string | undefined {
-  if (typeof url !== "string" || !url) return undefined;
-  if (url.startsWith("http") || url.startsWith("data:")) return url;
-
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "";
-  const host = apiBase.replace(/\/api\/?$/, "").replace(/\/+$/, "");
-  const path = url.startsWith("/") ? url : `/${url}`;
-
-  return host ? `${host}${path}` : path;
 }
 
 function readHeader(req: unknown, headerName: string): string | null {
@@ -271,7 +261,7 @@ export const authOptions: NextAuthOptions = {
             id: String(user.id),
             name: user.name,
             email: user.email,
-            image: normalizeImageUrl(user.image || user.profile_image || user.profile_picture || user.avatar),
+            image: user.image || user.profile_image || user.profile_picture || user.avatar || undefined,
             role: deriveRoleFromBackendUser(user) || "user",
             hasPlan: Boolean((user as any).has_plan),
             accessToken: access,
@@ -330,7 +320,7 @@ export const authOptions: NextAuthOptions = {
         token.hasPlan = Boolean(u.hasPlan);
         token.accessToken = u.accessToken;
         token.refreshToken = u.refreshToken;
-        token.image = normalizeImageUrl(u.image);
+        token.image = u.image;
       }
 
       // Keep role normalized even on subsequent calls.
@@ -367,7 +357,7 @@ export const authOptions: NextAuthOptions = {
           const roleFromBackend = deriveRoleFromBackendUser(backendUser);
           token.role = normalizeRole(roleFromBackend || (token as any).role || "user");
           token.hasPlan = Boolean((backendUser as any)?.has_plan);
-          token.image = normalizeImageUrl((backendUser as any)?.image || (backendUser as any)?.profile_image || (backendUser as any)?.profile_picture || (backendUser as any)?.avatar);
+          token.image = (backendUser as any)?.image || (backendUser as any)?.profile_image || (backendUser as any)?.profile_picture || (backendUser as any)?.avatar || undefined;
 
           console.log("[auth] google login ok", {
             email: (backendUser as any)?.email,
