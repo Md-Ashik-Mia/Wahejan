@@ -127,6 +127,7 @@ type AppUser = {
   id: string;
   name?: string;
   email?: string;
+  image?: string;
   role: string;
   hasPlan: boolean;
   accessToken: string;
@@ -260,6 +261,7 @@ export const authOptions: NextAuthOptions = {
             id: String(user.id),
             name: user.name,
             email: user.email,
+            image: user.image || user.profile_image || user.profile_picture || user.avatar || undefined,
             role: deriveRoleFromBackendUser(user) || "user",
             hasPlan: Boolean((user as any).has_plan),
             accessToken: access,
@@ -296,11 +298,11 @@ export const authOptions: NextAuthOptions = {
     // 3) Apple OAuth (optional)
     ...(process.env.APPLE_CLIENT_ID && process.env.APPLE_CLIENT_SECRET
       ? [
-          AppleProvider({
-            clientId: process.env.APPLE_CLIENT_ID,
-            clientSecret: process.env.APPLE_CLIENT_SECRET,
-          }),
-        ]
+        AppleProvider({
+          clientId: process.env.APPLE_CLIENT_ID,
+          clientSecret: process.env.APPLE_CLIENT_SECRET,
+        }),
+      ]
       : []),
   ],
 
@@ -318,6 +320,7 @@ export const authOptions: NextAuthOptions = {
         token.hasPlan = Boolean(u.hasPlan);
         token.accessToken = u.accessToken;
         token.refreshToken = u.refreshToken;
+        token.image = u.image;
       }
 
       // Keep role normalized even on subsequent calls.
@@ -354,6 +357,7 @@ export const authOptions: NextAuthOptions = {
           const roleFromBackend = deriveRoleFromBackendUser(backendUser);
           token.role = normalizeRole(roleFromBackend || (token as any).role || "user");
           token.hasPlan = Boolean((backendUser as any)?.has_plan);
+          token.image = (backendUser as any)?.image || (backendUser as any)?.profile_image || (backendUser as any)?.profile_picture || (backendUser as any)?.avatar || undefined;
 
           console.log("[auth] google login ok", {
             email: (backendUser as any)?.email,
@@ -373,6 +377,7 @@ export const authOptions: NextAuthOptions = {
         ...session.user,
         role: typeof token.role === "string" ? token.role : undefined,
         hasPlan: Boolean(token.hasPlan),
+        image: (token as any).image as string | undefined,
       } as unknown as typeof session.user;
 
       (session as unknown as { accessToken?: unknown }).accessToken = token.accessToken;

@@ -1,5 +1,5 @@
 import { DefaultSession, DefaultUser } from "next-auth";
-import { JWT } from "next-auth/jwt";
+import "next-auth/jwt";
 
 declare module "next-auth" {
   interface Session {
@@ -25,5 +25,6 @@ declare module "next-auth/jwt" {
     hasPlan?: boolean;
     accessToken?: string;
     refreshToken?: string;
+    image?: string;
   }
 }
