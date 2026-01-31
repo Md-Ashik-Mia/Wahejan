@@ -27,7 +27,7 @@ export const userNav = [
     icon: "/chathistory.png",
   },
   { label: "Support", href: "/user/support", icon: "/support.png" },
-  { label: "Teams", href: "/user/teams", icon: "/userteam.png" },
+  // { label: "Teams", href: "/user/teams", icon: "/userteam.png" },
   { label: "Test Chat", href: "/user/testchat", icon: "/testchat.png" },
   { label: "Settings", href: "/user/settings", icon: "/settings.png" },
 ];
