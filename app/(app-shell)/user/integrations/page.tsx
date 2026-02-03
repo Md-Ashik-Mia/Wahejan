@@ -1,19 +1,45 @@
-
 "use client";
 import { userapi } from "@/lib/http/client";
 import axios from "axios";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 const integrations = [
-  { platform: "facebook", name: "Facebook Messenger", desc: "Connect to automate replies" },
-  { platform: "whatsapp", name: "WhatsApp Business", desc: "Connect to automate replies" },
-  { platform: "instagram", name: "Instagram DM", desc: "Connect to automate replies" },
+  {
+    platform: "facebook",
+    name: "Facebook Messenger",
+    desc: "Connect to automate replies",
+  },
+  {
+    platform: "whatsapp",
+    name: "WhatsApp Business",
+    desc: "Connect to automate replies",
+  },
+  {
+    platform: "instagram",
+    name: "Instagram DM",
+    desc: "Connect to automate replies",
+  },
 ];
 
 const endpoints = {
-  facebook: ["/connect/fb/", "/connect/fb", "/api/connect/fb/", "/api/connect/fb"],
-  instagram: ["/connect/ig/", "/connect/ig", "/api/connect/ig/", "/api/connect/ig"],
-  whatsapp: ["/connect/wa/", "/connect/wa", "/api/connect/wa/", "/api/connect/wa"],
+  facebook: [
+    "/connect/fb/",
+    "/connect/fb",
+    "/api/connect/fb/",
+    "/api/connect/fb",
+  ],
+  instagram: [
+    "/connect/ig/",
+    "/connect/ig",
+    "/api/connect/ig/",
+    "/api/connect/ig",
+  ],
+  whatsapp: [
+    "/connect/wa/",
+    "/connect/wa",
+    "/api/connect/wa/",
+    "/api/connect/wa",
+  ],
 };
 
 const chatProfileEndpoints = ["/chat/chat-profile/", "/chat/chat-profile"];
@@ -24,7 +50,8 @@ function getApiError(error, fallback) {
     if (!data) return error.message || fallback;
     if (typeof data?.detail === "string") return data.detail;
     if (Array.isArray(data?.detail)) return data.detail.join(" ");
-    if (typeof error.message === "string" && error.message.trim()) return error.message;
+    if (typeof error.message === "string" && error.message.trim())
+      return error.message;
     return fallback;
   }
   if (error instanceof Error && error.message.trim()) return error.message;
@@ -55,18 +82,24 @@ const IntegrationPage = () => {
       setError((s) => ({ ...s, [platform]: null }));
       tryEndpoints(
         (ep) => userapi.get(ep, { params: { platform } }),
-        chatProfileEndpoints
+        chatProfileEndpoints,
       )
         .then((res) => {
           // Save full profile info for each platform
-          setStatus((s) => ({ ...s, [platform]: {
-            bot_active: !!res.data?.bot_active,
-            profile_id: res.data?.profile_id || "",
-          }}));
+          setStatus((s) => ({
+            ...s,
+            [platform]: {
+              bot_active: !!res.data?.bot_active,
+              profile_id: res.data?.profile_id || "",
+            },
+          }));
         })
         .catch((e) => {
           // If 404 or empty, treat as not connected
-          setStatus((s) => ({ ...s, [platform]: { bot_active: false, profile_id: "" } }));
+          setStatus((s) => ({
+            ...s,
+            [platform]: { bot_active: false, profile_id: "" },
+          }));
           setError((s) => ({ ...s, [platform]: "Platform is not connected" }));
         })
         .finally(() => setLoading((s) => ({ ...s, [platform]: false })));
@@ -80,7 +113,7 @@ const IntegrationPage = () => {
     try {
       const res = await tryEndpoints(
         (ep) => userapi.patch(ep, { platform, bot_active: nextValue }),
-        chatProfileEndpoints
+        chatProfileEndpoints,
       );
       setStatus((s) => ({
         ...s,
@@ -90,7 +123,10 @@ const IntegrationPage = () => {
         },
       }));
     } catch (e) {
-      setError((s) => ({ ...s, [platform]: getApiError(e, "Failed to update") }));
+      setError((s) => ({
+        ...s,
+        [platform]: getApiError(e, "Failed to update"),
+      }));
     } finally {
       setLoading((s) => ({ ...s, [platform]: false }));
     }
@@ -103,13 +139,16 @@ const IntegrationPage = () => {
     try {
       const res = await tryEndpoints(
         (ep) => userapi.get(ep, { params: { from: "web" } }),
-        endpoints[platform]
+        endpoints[platform],
       );
       const url = res.data?.redirect_url;
       if (typeof url === "string") window.location.assign(url);
       else throw new Error("No redirect_url");
     } catch (e) {
-      setError((s) => ({ ...s, [platform]: getApiError(e, "Failed to connect") }));
+      setError((s) => ({
+        ...s,
+        [platform]: getApiError(e, "Failed to connect"),
+      }));
     } finally {
       setLoading((s) => ({ ...s, [platform]: false }));
     }
@@ -120,18 +159,26 @@ const IntegrationPage = () => {
       <h1 className="text-2xl font-bold mb-6">Integrations</h1>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
         {integrations.map(({ platform, name, desc }) => {
-          const info = status[platform] || { bot_active: false, profile_id: "" };
+          const info = status[platform] || {
+            bot_active: false,
+            profile_id: "",
+          };
           const isConnected = !!info.profile_id;
           const isActive = !!info.bot_active;
           const isLoading = !!loading[platform];
           const err = error[platform];
           return (
-            <div key={platform} className="bg-[#272727] rounded-xl p-5 flex flex-col justify-between shadow-lg hover:bg-gray-700 transition">
+            <div
+              key={platform}
+              className="bg-[#272727] rounded-xl p-5 flex flex-col justify-between shadow-lg hover:bg-gray-700 transition"
+            >
               <div>
                 <h2 className="text-lg font-semibold mb-1">{name}</h2>
                 <p className="text-gray-400 text-sm mb-4">{desc}</p>
                 {!isConnected && (
-                  <p className="text-xs mb-3 text-red-400">Platform is not connected</p>
+                  <p className="text-xs mb-3 text-red-400">
+                    Platform is not connected
+                  </p>
                 )}
                 {err && isConnected && (
                   <p className="text-xs mb-3 text-red-400">{err}</p>
@@ -142,7 +189,11 @@ const IntegrationPage = () => {
                   className={`px-4 py-2 text-sm rounded-md font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed ${isLoading ? "bg-gray-700 text-gray-300" : "bg-blue-600 hover:bg-blue-700 text-white"}`}
                   onClick={() => handleConnect(platform)}
                 >
-                  {isLoading ? "Working..." : isConnected ? "Update" : "Connect"}
+                  {isLoading
+                    ? "Working..."
+                    : isConnected
+                      ? "Update"
+                      : "Connect"}
                 </button>
               </div>
               {isConnected && (
@@ -168,4 +219,3 @@ const IntegrationPage = () => {
 };
 
 export default IntegrationPage;
-
