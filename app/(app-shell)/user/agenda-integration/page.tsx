@@ -7,12 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { userapi } from "@/lib/http/client";
 import axios, { type AxiosResponse } from "axios";
 import { addMonths, format, parseISO, subMonths } from "date-fns";
-import {
-    ChevronLeft,
-    ChevronRight,
-    ExternalLink,
-    Menu,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, Menu } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FcGoogle } from "react-icons/fc";
 
@@ -40,7 +35,12 @@ function extractList(payload: unknown): unknown[] {
   if (Array.isArray(payload)) return payload;
   if (!isRecord(payload)) return [];
 
-  const candidates = [payload.bookings, payload.results, payload.data, payload.list];
+  const candidates = [
+    payload.bookings,
+    payload.results,
+    payload.data,
+    payload.list,
+  ];
   for (const c of candidates) {
     if (Array.isArray(c)) return c;
   }
@@ -51,7 +51,8 @@ function coerceDateTimeString(input: string): string {
   const s = input.trim();
   if (!s) return "";
   // API example: "2025-12-05 09:13:00" -> ISO-like
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) return s.replace(" ", "T");
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s))
+    return s.replace(" ", "T");
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(s)) return s;
   return s;
 }
@@ -70,10 +71,15 @@ function formatApiDateTime(input: string): { date: string; time: string } {
 function getErrorMessage(error: unknown, fallback: string): string {
   if (axios.isAxiosError(error)) {
     const data = error.response?.data;
-    if (isRecord(data) && typeof data.detail === "string" && data.detail.trim()) {
+    if (
+      isRecord(data) &&
+      typeof data.detail === "string" &&
+      data.detail.trim()
+    ) {
       return data.detail;
     }
-    if (typeof error.message === "string" && error.message.trim()) return error.message;
+    if (typeof error.message === "string" && error.message.trim())
+      return error.message;
     return fallback;
   }
   if (error instanceof Error && error.message.trim()) return error.message;
@@ -83,11 +89,14 @@ function getErrorMessage(error: unknown, fallback: string): string {
 function normalizeBooking(raw: unknown): Appointment {
   const r: UnknownRecord = isRecord(raw) ? raw : {};
 
-  const start = typeof r.start_time === "string" ? formatApiDateTime(r.start_time) : null;
-  const end = typeof r.end_time === "string" ? formatApiDateTime(r.end_time) : null;
+  const start =
+    typeof r.start_time === "string" ? formatApiDateTime(r.start_time) : null;
+  const end =
+    typeof r.end_time === "string" ? formatApiDateTime(r.end_time) : null;
 
   return {
-    id: typeof r.id === "number" ? String(r.id) : String(Math.random()).slice(2),
+    id:
+      typeof r.id === "number" ? String(r.id) : String(Math.random()).slice(2),
     title: typeof r.title === "string" ? r.title : "",
     startDate: start?.date || "",
     startTime: start?.time || "",
@@ -118,6 +127,11 @@ function toISODate(date: Date) {
   return format(date, "yyyy-MM-dd");
 }
 
+function parseCalendarEnabled(payload: unknown): boolean | null {
+  if (!isRecord(payload)) return null;
+  return typeof payload.calendar === "boolean" ? payload.calendar : null;
+}
+
 function formatChipNumber(value: number) {
   return String(value);
 }
@@ -137,15 +151,19 @@ const AgendaIntegrationPage: React.FC = () => {
     return new Date(today.getFullYear(), today.getMonth(), 1);
   });
 
-  const [remoteAppointments, setRemoteAppointments] = useState<Appointment[]>([]);
+  const [remoteAppointments, setRemoteAppointments] = useState<Appointment[]>(
+    [],
+  );
   const [localAppointments, setLocalAppointments] = useState<Appointment[]>([]);
   const [appointmentsLoading, setAppointmentsLoading] = useState(false);
-  const [appointmentsError, setAppointmentsError] = useState<string | null>(null);
+  const [appointmentsError, setAppointmentsError] = useState<string | null>(
+    null,
+  );
   const [dayScopedApi, setDayScopedApi] = useState(false);
 
   const appointments = useMemo(
     () => [...remoteAppointments, ...localAppointments],
-    [remoteAppointments, localAppointments]
+    [remoteAppointments, localAppointments],
   );
 
   const bookingsEndpoints = useMemo(
@@ -155,7 +173,7 @@ const AgendaIntegrationPage: React.FC = () => {
       "/api/bookings/monthly/",
       "/api/bookings/monthly",
     ],
-    []
+    [],
   );
 
   const googleConnectEndpoints = useMemo(
@@ -165,7 +183,7 @@ const AgendaIntegrationPage: React.FC = () => {
       "/api/google/calendar/connect/",
       "/api/google/calendar/connect",
     ],
-    []
+    [],
   );
 
   // Use the user's browser timezone (IANA name), e.g. "Asia/Dhaka".
@@ -190,8 +208,13 @@ const AgendaIntegrationPage: React.FC = () => {
           break;
         } catch (e: unknown) {
           lastError = e;
-          if (axios.isAxiosError(e) && e.response && e.response.status === 401) throw e;
-          if (axios.isAxiosError(e) && e.response && e.response.status !== 404) {
+          if (axios.isAxiosError(e) && e.response && e.response.status === 401)
+            throw e;
+          if (
+            axios.isAxiosError(e) &&
+            e.response &&
+            e.response.status !== 404
+          ) {
             // for 400/etc, don't keep trying wrong endpoints
             break;
           }
@@ -201,7 +224,7 @@ const AgendaIntegrationPage: React.FC = () => {
       if (!res) throw lastError ?? new Error("Failed to load bookings");
       return res.data;
     },
-    [bookingsEndpoints]
+    [bookingsEndpoints],
   );
 
   const connectGoogleCalendar = useCallback(async () => {
@@ -217,18 +240,28 @@ const AgendaIntegrationPage: React.FC = () => {
           break;
         } catch (e: unknown) {
           lastError = e;
-          if (axios.isAxiosError(e) && e.response && e.response.status === 401) throw e;
-          if (axios.isAxiosError(e) && e.response && e.response.status !== 404) {
+          if (axios.isAxiosError(e) && e.response && e.response.status === 401)
+            throw e;
+          if (
+            axios.isAxiosError(e) &&
+            e.response &&
+            e.response.status !== 404
+          ) {
             // for 400/etc, don't keep trying wrong endpoints
             break;
           }
         }
       }
 
-      if (!res) throw lastError ?? new Error("Failed to connect Google Calendar");
+      if (!res)
+        throw lastError ?? new Error("Failed to connect Google Calendar");
       const data = res.data;
 
-      if (isRecord(data) && typeof data.auth_url === "string" && data.auth_url.trim()) {
+      if (
+        isRecord(data) &&
+        typeof data.auth_url === "string" &&
+        data.auth_url.trim()
+      ) {
         window.location.href = data.auth_url;
         return;
       }
@@ -244,11 +277,13 @@ const AgendaIntegrationPage: React.FC = () => {
 
   const createBookingEndpoints = useMemo(
     () => ["/booking/", "/booking", "/api/booking/", "/api/booking"],
-    []
+    [],
   );
 
   const [creatingBooking, setCreatingBooking] = useState(false);
-  const [createBookingError, setCreateBookingError] = useState<string | null>(null);
+  const [createBookingError, setCreateBookingError] = useState<string | null>(
+    null,
+  );
 
   const fetchMonthBookings = useCallback(
     async (targetMonth: Date, preferredDay?: number) => {
@@ -262,6 +297,8 @@ const AgendaIntegrationPage: React.FC = () => {
         // Try month-level fetch first (no day).
         try {
           const data = await fetchBookings({ month, year, timezone });
+          const calendarEnabled = parseCalendarEnabled(data);
+          if (calendarEnabled !== null) setGoogleEnabled(calendarEnabled);
           const list = extractList(data)
             .map(normalizeBooking)
             .filter((a) => Boolean(a.startDate));
@@ -272,6 +309,8 @@ const AgendaIntegrationPage: React.FC = () => {
           // If the backend requires `day`, fall back to day-scoped fetch.
           const day = typeof preferredDay === "number" ? preferredDay : 1;
           const data = await fetchBookings({ month, year, timezone, day });
+          const calendarEnabled = parseCalendarEnabled(data);
+          if (calendarEnabled !== null) setGoogleEnabled(calendarEnabled);
           const list = extractList(data)
             .map(normalizeBooking)
             .filter((a) => Boolean(a.startDate));
@@ -285,7 +324,7 @@ const AgendaIntegrationPage: React.FC = () => {
         setAppointmentsLoading(false);
       }
     },
-    [fetchBookings, timezone]
+    [fetchBookings, timezone],
   );
 
   useEffect(() => {
@@ -296,7 +335,7 @@ const AgendaIntegrationPage: React.FC = () => {
   const selectedISO = toISODate(selectedDate);
 
   const appointmentDates = Array.from(
-    new Set(appointments.map((a) => a.startDate))
+    new Set(appointments.map((a) => a.startDate)),
   ).map((d) => parseISO(d));
 
   const selectedAppointments = appointments
@@ -379,8 +418,17 @@ const AgendaIntegrationPage: React.FC = () => {
           break;
         } catch (err: unknown) {
           lastError = err;
-          if (axios.isAxiosError(err) && err.response && err.response.status === 401) throw err;
-          if (axios.isAxiosError(err) && err.response && err.response.status !== 404) {
+          if (
+            axios.isAxiosError(err) &&
+            err.response &&
+            err.response.status === 401
+          )
+            throw err;
+          if (
+            axios.isAxiosError(err) &&
+            err.response &&
+            err.response.status !== 404
+          ) {
             // for 400/etc, don't keep trying wrong endpoints
             break;
           }
@@ -393,18 +441,28 @@ const AgendaIntegrationPage: React.FC = () => {
       if (created.startDate) setDate(parseISO(created.startDate));
       if (created.startDate) {
         const d = parseISO(created.startDate);
-        if (!Number.isNaN(d.getTime())) setCalendarDate(new Date(d.getFullYear(), d.getMonth(), 1));
+        if (!Number.isNaN(d.getTime()))
+          setCalendarDate(new Date(d.getFullYear(), d.getMonth(), 1));
       }
 
       // Refresh the calendar/list from backend (preferred), and also optimistically append.
       setLocalAppointments((prev) => [created, ...prev]);
       void fetchMonthBookings(
         new Date(
-          (created.startDate ? parseISO(created.startDate) : selectedDate).getFullYear(),
-          (created.startDate ? parseISO(created.startDate) : selectedDate).getMonth(),
-          1
+          (created.startDate
+            ? parseISO(created.startDate)
+            : selectedDate
+          ).getFullYear(),
+          (created.startDate
+            ? parseISO(created.startDate)
+            : selectedDate
+          ).getMonth(),
+          1,
         ),
-        (created.startDate ? parseISO(created.startDate) : selectedDate).getDate()
+        (created.startDate
+          ? parseISO(created.startDate)
+          : selectedDate
+        ).getDate(),
       );
 
       setShowForm(false);
@@ -429,7 +487,7 @@ const AgendaIntegrationPage: React.FC = () => {
   const handleCancel = () => setShowForm(false);
 
   function AgendaDayButton(
-    props: React.ComponentProps<typeof CalendarDayButton>
+    props: React.ComponentProps<typeof CalendarDayButton>,
   ) {
     const iso = toISODate(props.day.date);
     const hasAppointment = appointments.some((a) => a.startDate === iso);
@@ -456,7 +514,9 @@ const AgendaIntegrationPage: React.FC = () => {
             >
               <ChevronLeft className="w-4 h-4 md:w-5 md:h-5 text-gray-300" />
             </button>
-            <h1 className="text-xl md:text-2xl font-semibold">Add Appointments</h1>
+            <h1 className="text-xl md:text-2xl font-semibold">
+              Add Appointments
+            </h1>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -473,7 +533,9 @@ const AgendaIntegrationPage: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <Label className="text-gray-400 font-normal">Starting Date & Time</Label>
+              <Label className="text-gray-400 font-normal">
+                Starting Date & Time
+              </Label>
               <div className="grid grid-cols-2 gap-3">
                 <Input
                   type="date"
@@ -495,7 +557,9 @@ const AgendaIntegrationPage: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <Label className="text-gray-400 font-normal">Ending Date & Time</Label>
+              <Label className="text-gray-400 font-normal">
+                Ending Date & Time
+              </Label>
               <div className="grid grid-cols-2 gap-3">
                 <Input
                   type="date"
@@ -569,7 +633,9 @@ const AgendaIntegrationPage: React.FC = () => {
               <Textarea
                 placeholder="Notes"
                 value={formData.notes}
-                onChange={(e) => setFormData((p) => ({ ...p, notes: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((p) => ({ ...p, notes: e.target.value }))
+                }
                 className="bg-[#1C1C1E] border-gray-800 text-gray-200 min-h-[120px] resize-none rounded-xl"
               />
             </div>
@@ -652,7 +718,9 @@ const AgendaIntegrationPage: React.FC = () => {
             </button>
 
             <div className="text-center">
-              <div className="text-xl font-medium">{format(calendarDate, "MMMM yyyy")}</div>
+              <div className="text-xl font-medium">
+                {format(calendarDate, "MMMM yyyy")}
+              </div>
             </div>
 
             <button
@@ -667,7 +735,7 @@ const AgendaIntegrationPage: React.FC = () => {
 
           <div className="agenda-rdp">
             <style jsx global>{`
-              .agenda-rdp [data-slot='calendar'] {
+              .agenda-rdp [data-slot="calendar"] {
                 width: 100%;
                 margin: 0;
               }
@@ -725,20 +793,21 @@ const AgendaIntegrationPage: React.FC = () => {
                   height: 4.5rem !important;
                   font-size: 1.75rem;
                 }
-                .agenda-rdp .rdp-weekday, .agenda-rdp .rdp-day {
+                .agenda-rdp .rdp-weekday,
+                .agenda-rdp .rdp-day {
                   width: 4.5rem;
                 }
               }
 
               /* Selected day: show subtle outline (not filled) */
-              .agenda-rdp button[data-selected-single='true'] {
+              .agenda-rdp button[data-selected-single="true"] {
                 background-color: transparent !important;
                 border-color: rgba(156, 163, 175, 0.6) !important;
                 color: white !important;
               }
 
               /* Has appointment (blue circle) */
-              .agenda-rdp button[data-has-appointment='true'] {
+              .agenda-rdp button[data-has-appointment="true"] {
                 background-color: rgb(37 99 235) !important;
                 color: white !important;
                 border-color: transparent !important;
@@ -763,7 +832,7 @@ const AgendaIntegrationPage: React.FC = () => {
                   if (d && dayScopedApi) {
                     void fetchMonthBookings(
                       new Date(d.getFullYear(), d.getMonth(), 1),
-                      d.getDate()
+                      d.getDate(),
                     );
                   }
                 }}
@@ -785,7 +854,9 @@ const AgendaIntegrationPage: React.FC = () => {
             {appointmentsError ? (
               <p className="text-sm text-red-400 mt-3">{appointmentsError}</p>
             ) : appointmentsLoading ? (
-              <p className="text-sm text-gray-400 mt-3">Loading appointments...</p>
+              <p className="text-sm text-gray-400 mt-3">
+                Loading appointments...
+              </p>
             ) : null}
           </div>
         </div>
@@ -807,36 +878,43 @@ const AgendaIntegrationPage: React.FC = () => {
             </div>
             <div className="flex-1 flex items-center justify-between gap-4">
               <div>
-                <div className="text-lg md:text-xl font-semibold">Google Calendar</div>
+                <div className="text-lg md:text-xl font-semibold">
+                  Google Calendar
+                </div>
                 {googleError ? (
                   <div className="mt-2 text-sm text-red-200">{googleError}</div>
                 ) : null}
               </div>
 
-              <button
-                type="button"
-                role="switch"
-                aria-checked={googleEnabled}
-                disabled={googleConnecting}
-                onClick={() => {
-                  const next = !googleEnabled;
-                  setGoogleEnabled(next);
-                  if (next) void connectGoogleCalendar();
-                }}
-                className={
-                  "relative inline-flex h-7 w-12 items-center rounded-full transition-colors " +
-                  (googleEnabled ? "bg-blue-600" : "bg-gray-700") +
-                  (googleConnecting ? " opacity-60" : "")
-                }
-                aria-label="Google Calendar"
-              >
-                <span
+              <div className="flex items-center gap-3">
+                <span className="text-sm md:text-base text-gray-300">
+                  {googleEnabled ? "On" : "Off"}
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={googleEnabled}
+                  disabled={googleConnecting}
+                  onClick={() => {
+                    const next = !googleEnabled;
+                    setGoogleEnabled(next);
+                    if (next) void connectGoogleCalendar();
+                  }}
                   className={
-                    "inline-block h-5 w-5 transform rounded-full bg-white transition-transform " +
-                    (googleEnabled ? "translate-x-6" : "translate-x-1")
+                    "relative inline-flex h-7 w-12 items-center rounded-full transition-colors " +
+                    (googleEnabled ? "bg-blue-600" : "bg-gray-700") +
+                    (googleConnecting ? " opacity-60" : "")
                   }
-                />
-              </button>
+                  aria-label="Google Calendar"
+                >
+                  <span
+                    className={
+                      "inline-block h-5 w-5 transform rounded-full bg-white transition-transform " +
+                      (googleEnabled ? "translate-x-6" : "translate-x-1")
+                    }
+                  />
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -844,7 +922,9 @@ const AgendaIntegrationPage: React.FC = () => {
         {/* Appointments list (changes when date changes) */}
         <div className="pt-2">
           <div className="flex items-center justify-between mb-3">
-            <div className="text-xl md:text-2xl font-semibold">Appointments</div>
+            <div className="text-xl md:text-2xl font-semibold">
+              Appointments
+            </div>
             <div className="text-gray-500 text-base md:text-lg">
               {format(selectedDate, "d-M-yyyy")}
             </div>
@@ -864,7 +944,10 @@ const AgendaIntegrationPage: React.FC = () => {
                   <div className="flex gap-4">
                     <div className="text-blue-500 text-lg md:text-xl font-semibold shrink-0 pt-1">
                       {a.startDate && a.startTime
-                        ? format(parseISO(`${a.startDate}T${a.startTime}:00`), "h:mm a")
+                        ? format(
+                            parseISO(`${a.startDate}T${a.startTime}:00`),
+                            "h:mm a",
+                          )
                         : "—"}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -914,4 +997,3 @@ const AgendaIntegrationPage: React.FC = () => {
 };
 
 export default AgendaIntegrationPage;
-
