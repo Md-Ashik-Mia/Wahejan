@@ -3,50 +3,43 @@ import { adminApi } from "@/lib/http/client";
 import axios from "axios";
 import { BarChart3, DollarSign, MessageCircle, Send } from "lucide-react";
 import { useSession } from "next-auth/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 type SessionWithAccessToken = { accessToken?: string };
 
 function getAccessToken(session: unknown): string | null {
-  const fromSession = (session as SessionWithAccessToken | null)?.accessToken;
-  if (typeof fromSession === "string" && fromSession) return fromSession;
-  if (typeof window !== "undefined") {
-    const fromStorage = localStorage.getItem("access_token");
-    if (fromStorage) return fromStorage;
-  }
-  return null;
+  const token = (session as SessionWithAccessToken | null)?.accessToken;
+  if (typeof token === "string" && token) return token;
+  return typeof window !== "undefined"
+    ? localStorage.getItem("access_token")
+    : null;
 }
 
-type MetricDelta = {
-  current: number;
-  previous: number;
-};
+type MetricDelta = { current: number; previous: number };
 
 type PerformanceAnalyticsResponse = {
   total_message_sent?: Partial<MetricDelta>;
   total_message_received?: Partial<MetricDelta>;
   monthly_revenue?: Partial<MetricDelta>;
   total_revenue?: number;
+  total_revenue_previous?: number;
   time_scope?: string;
 };
 
-function numberOrZero(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
+const toNumber = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) ? value : 0;
 
-function formatMoney(value: number): string {
-  return `$${value.toLocaleString()}`;
-}
+const formatMoney = (value: number) => `$${value.toLocaleString()}`;
 
-function formatDelta(current: number, previous: number): string {
-  if (previous === 0) {
-    if (current === 0) return "0% from previous";
-    return "+— from previous";
+const formatDelta = (current: number, previous: number) => {
+  if (!previous) {
+    if (!current) return "0% from last period";
+    const pct = current * 100;
+    return `+${pct.toFixed(1)}% from last period`;
   }
   const pct = ((current - previous) / previous) * 100;
-  const sign = pct >= 0 ? "+" : "";
-  return `${sign}${pct.toFixed(1)}% from previous`;
-}
+  return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}% from last period`;
+};
 
 const TIME_SCOPE_MAP: Record<"today" | "month" | "year", string> = {
   today: "today",
@@ -63,11 +56,7 @@ const AnalyticsDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Use correct API param mapping
-  const timeScopeParam = useMemo(
-    () => TIME_SCOPE_MAP[timeFilter],
-    [timeFilter],
-  );
+  const timeScopeParam = TIME_SCOPE_MAP[timeFilter];
 
   useEffect(() => {
     if (sessionStatus === "loading") return;
@@ -119,57 +108,47 @@ const AnalyticsDashboard = () => {
     fetchAnalytics();
   }, [session, sessionStatus, timeScopeParam]);
 
-  const messagesSent = numberOrZero(stats?.total_message_sent?.current);
-  const messagesSentPrev = numberOrZero(stats?.total_message_sent?.previous);
-  const messagesReceived = numberOrZero(stats?.total_message_received?.current);
-  const messagesReceivedPrev = numberOrZero(
+  const messagesSent = toNumber(stats?.total_message_sent?.current);
+  const messagesSentPrev = toNumber(stats?.total_message_sent?.previous);
+  const messagesReceived = toNumber(stats?.total_message_received?.current);
+  const messagesReceivedPrev = toNumber(
     stats?.total_message_received?.previous,
   );
-  const monthlyRevenue = numberOrZero(stats?.monthly_revenue?.current);
-  const monthlyRevenuePrev = numberOrZero(stats?.monthly_revenue?.previous);
-  const totalRevenue = numberOrZero(stats?.total_revenue);
+  const monthlyRevenue = toNumber(stats?.monthly_revenue?.current);
+  const monthlyRevenuePrev = toNumber(stats?.monthly_revenue?.previous);
+  const totalRevenue = toNumber(stats?.total_revenue);
+  const totalRevenuePrev = toNumber(stats?.total_revenue_previous);
 
-  const cards = useMemo(
-    () => [
-      {
-        label: "Messages Sent",
-        value: messagesSent,
-        color: "text-yellow-400",
-        icon: <Send className="w-6 h-6 text-yellow-400" />,
-        change: formatDelta(messagesSent, messagesSentPrev),
-      },
-      {
-        label: "Messages Received",
-        value: messagesReceived,
-        color: "text-green-400",
-        icon: <MessageCircle className="w-6 h-6 text-green-400" />,
-        change: formatDelta(messagesReceived, messagesReceivedPrev),
-      },
-      {
-        label: "Monthly Revenue",
-        value: formatMoney(monthlyRevenue),
-        color: "text-pink-500",
-        icon: <BarChart3 className="w-6 h-6 text-pink-500" />,
-        change: formatDelta(monthlyRevenue, monthlyRevenuePrev),
-      },
-      {
-        label: "Total Revenue",
-        value: formatMoney(totalRevenue),
-        color: "text-yellow-400",
-        icon: <DollarSign className="w-6 h-6 text-yellow-400" />,
-        change: "Total",
-      },
-    ],
-    [
-      messagesReceived,
-      messagesReceivedPrev,
-      messagesSent,
-      messagesSentPrev,
-      monthlyRevenue,
-      monthlyRevenuePrev,
-      totalRevenue,
-    ],
-  );
+  const cards = [
+    {
+      label: "Messages Sent",
+      value: messagesSent,
+      color: "text-yellow-400",
+      icon: <Send className="w-6 h-6 text-yellow-400" />,
+      change: formatDelta(messagesSent, messagesSentPrev),
+    },
+    {
+      label: "Messages Received",
+      value: messagesReceived,
+      color: "text-green-400",
+      icon: <MessageCircle className="w-6 h-6 text-green-400" />,
+      change: formatDelta(messagesReceived, messagesReceivedPrev),
+    },
+    {
+      label: "Monthly Revenue",
+      value: formatMoney(monthlyRevenue),
+      color: "text-pink-500",
+      icon: <BarChart3 className="w-6 h-6 text-pink-500" />,
+      change: formatDelta(monthlyRevenue, monthlyRevenuePrev),
+    },
+    {
+      label: "Total Revenue",
+      value: formatMoney(totalRevenue),
+      color: "text-yellow-400",
+      icon: <DollarSign className="w-6 h-6 text-yellow-400" />,
+      change: formatDelta(totalRevenue, totalRevenuePrev),
+    },
+  ];
 
   return (
     <div className="min-h-screen bg-black text-white p-6 space-y-8">
