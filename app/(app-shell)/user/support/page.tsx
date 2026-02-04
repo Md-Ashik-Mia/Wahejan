@@ -2,6 +2,8 @@
 import { userapi } from "@/lib/http/client";
 import axios, { type AxiosResponse } from "axios";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -23,10 +25,15 @@ function extractList(payload: unknown): unknown[] {
 function getErrorMessage(error: unknown, fallback: string): string {
   if (axios.isAxiosError(error)) {
     const data = error.response?.data;
-    if (isRecord(data) && typeof data.detail === "string" && data.detail.trim()) {
+    if (
+      isRecord(data) &&
+      typeof data.detail === "string" &&
+      data.detail.trim()
+    ) {
       return data.detail;
     }
-    if (typeof error.message === "string" && error.message.trim()) return error.message;
+    if (typeof error.message === "string" && error.message.trim())
+      return error.message;
     return fallback;
   }
   if (error instanceof Error && error.message.trim()) return error.message;
@@ -50,7 +57,8 @@ function normalizeTicket(raw: unknown): SupportTicket {
     id: typeof r.id === "number" ? r.id : 0,
     user: typeof r.user === "string" ? r.user : "",
     ticket_id: typeof r.ticket_id === "string" ? r.ticket_id : "",
-    time_since_created: typeof r.time_since_created === "string" ? r.time_since_created : "",
+    time_since_created:
+      typeof r.time_since_created === "string" ? r.time_since_created : "",
     description: typeof r.description === "string" ? r.description : "",
     status: typeof r.status === "string" ? r.status : "",
     created_at: typeof r.created_at === "string" ? r.created_at : "",
@@ -66,7 +74,9 @@ function formatWhen(value: string, fallback = "—"): string {
 
 const SupportPage: React.FC = () => {
   const [issue, setIssue] = useState("");
-  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [status, setStatus] = useState<
+    "idle" | "loading" | "success" | "error"
+  >("idle");
 
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [ticketsLoading, setTicketsLoading] = useState(false);
@@ -81,7 +91,7 @@ const SupportPage: React.FC = () => {
       "/api/tickets/",
       "/api/tickets",
     ],
-    []
+    [],
   );
 
   const fetchTickets = useCallback(async () => {
@@ -98,7 +108,11 @@ const SupportPage: React.FC = () => {
           break;
         } catch (e: unknown) {
           lastError = e;
-          if (axios.isAxiosError(e) && e.response && e.response.status !== 404) {
+          if (
+            axios.isAxiosError(e) &&
+            e.response &&
+            e.response.status !== 404
+          ) {
             if (e.response.status === 401) throw e;
           }
         }
@@ -130,7 +144,10 @@ const SupportPage: React.FC = () => {
   }, [fetchTickets]);
 
   const handleSubmit = async () => {
-    if (!issue.trim()) return alert("Please describe your issue.");
+    if (!issue.trim()) {
+      toast.error("Please describe your issue.");
+      return;
+    }
 
     try {
       setStatus("loading");
@@ -148,7 +165,11 @@ const SupportPage: React.FC = () => {
           break;
         } catch (e: unknown) {
           lastError = e;
-          if (axios.isAxiosError(e) && e.response && e.response.status === 401) {
+          if (
+            axios.isAxiosError(e) &&
+            e.response &&
+            e.response.status === 401
+          ) {
             throw e;
           }
         }
@@ -157,17 +178,20 @@ const SupportPage: React.FC = () => {
       if (!created) throw lastError ?? new Error("Failed to create ticket");
 
       setStatus("success");
+      toast.success("Support request sent to admin");
       setIssue("");
       void fetchTickets();
       setTimeout(() => setStatus("idle"), 2500);
     } catch {
       setStatus("error");
+      toast.error("Failed to send support request");
       setTimeout(() => setStatus("idle"), 2500);
     }
   };
 
   return (
     <div className="min-h-screen bg-black  text-white p-6">
+      <ToastContainer position="top-right" autoClose={2500} theme="dark" />
       {/* Page Title */}
       <h1 className="text-xl font-semibold mb-6">Support</h1>
 
@@ -175,7 +199,9 @@ const SupportPage: React.FC = () => {
       <div className="max-w-8xl mx-auto bg-[#272727]  p-6 rounded-xl shadow-lg space-y-4">
         <div>
           <h2 className="text-lg font-semibold">Support</h2>
-          <p className="text-gray-400 text-sm">Start a chat or create a ticket</p>
+          <p className="text-gray-400 text-sm">
+            Start a chat or create a ticket
+          </p>
         </div>
 
         {/* Input and Button */}
@@ -238,12 +264,19 @@ const SupportPage: React.FC = () => {
         ) : (
           <div className="space-y-3">
             {tickets.map((t) => (
-              <div key={t.id || t.ticket_id} className="bg-gray-700 rounded-lg p-4">
+              <div
+                key={t.id || t.ticket_id}
+                className="bg-gray-700 rounded-lg p-4"
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm text-gray-300 font-medium truncate">{t.ticket_id || "Support Ticket"}</p>
+                    <p className="text-sm text-gray-300 font-medium truncate">
+                      {t.ticket_id || "Support Ticket"}
+                    </p>
                     {t.description ? (
-                      <p className="text-white text-base font-medium mt-2 leading-relaxed">{t.description}</p>
+                      <p className="text-white text-base font-medium mt-2 leading-relaxed">
+                        {t.description}
+                      </p>
                     ) : null}
                     <p className="text-gray-400 text-xs mt-2">
                       {t.time_since_created ? `${t.time_since_created} • ` : ""}
@@ -267,4 +300,3 @@ const SupportPage: React.FC = () => {
 };
 
 export default SupportPage;
-

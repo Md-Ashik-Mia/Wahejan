@@ -10,6 +10,8 @@ import { addMonths, format, parseISO, subMonths } from "date-fns";
 import { ChevronLeft, ChevronRight, ExternalLink, Menu } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FcGoogle } from "react-icons/fc";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 type Appointment = {
   id: string;
@@ -71,12 +73,12 @@ function formatApiDateTime(input: string): { date: string; time: string } {
 function getErrorMessage(error: unknown, fallback: string): string {
   if (axios.isAxiosError(error)) {
     const data = error.response?.data;
-    if (
-      isRecord(data) &&
-      typeof data.detail === "string" &&
-      data.detail.trim()
-    ) {
-      return data.detail;
+    if (isRecord(data)) {
+      const detail =
+        (typeof data.error === "string" && data.error.trim()) ||
+        (typeof data.message === "string" && data.message.trim()) ||
+        (typeof data.detail === "string" && data.detail.trim());
+      if (detail) return detail;
     }
     if (typeof error.message === "string" && error.message.trim())
       return error.message;
@@ -466,6 +468,7 @@ const AgendaIntegrationPage: React.FC = () => {
       );
 
       setShowForm(false);
+      toast.success("Appointment added successfully");
       setFormData((prev) => ({
         ...prev,
         title: "",
@@ -478,7 +481,9 @@ const AgendaIntegrationPage: React.FC = () => {
         description: "",
       }));
     } catch (err: unknown) {
-      setCreateBookingError(getErrorMessage(err, "Failed to create booking"));
+      const message = getErrorMessage(err, "Failed to create booking");
+      setCreateBookingError(message);
+      toast.error(message);
     } finally {
       setCreatingBooking(false);
     }
@@ -505,6 +510,7 @@ const AgendaIntegrationPage: React.FC = () => {
   if (showForm) {
     return (
       <div className="min-h-screen bg-black text-white px-4 py-6 sm:px-6">
+        <ToastContainer position="top-right" autoClose={2500} theme="dark" />
         <div className="mx-auto w-full max-w-md md:max-w-2xl">
           <div className="flex items-center gap-3 mb-6">
             <button
@@ -669,6 +675,7 @@ const AgendaIntegrationPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-black text-white px-4 py-6 sm:px-6">
+      <ToastContainer position="top-right" autoClose={2500} theme="dark" />
       <div className="mx-auto w-full max-w-md md:max-w-4xl space-y-6 md:space-y-8">
         {/* Header */}
         <div className="flex items-center gap-3">

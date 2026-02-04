@@ -2,6 +2,8 @@
 import { userApi } from "@/lib/http/client";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import { ToastContainer, toast as toastifyToast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 type ApiPlan = {
   id: number;
@@ -129,7 +131,9 @@ const SettingsPage: React.FC = () => {
   const [stripeOnboardError, setStripeOnboardError] = useState<string | null>(null);
 
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [changePasswordLoading, setChangePasswordLoading] = useState(false);
   const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
 
@@ -464,34 +468,54 @@ const SettingsPage: React.FC = () => {
   }, [apiVariantPaths, getErrorMessage, getStatusCode]);
 
   const handleChangePassword = useCallback(async () => {
-    const trimmed = newPassword.trim();
-    if (!trimmed) {
+    const trimmedCurrent = currentPassword.trim();
+    const trimmedNew = newPassword.trim();
+    const trimmedConfirm = confirmPassword.trim();
+
+    if (!trimmedCurrent) {
+      setChangePasswordError("Please enter your current password");
+      return;
+    }
+    if (!trimmedNew) {
       setChangePasswordError("Please enter a new password");
+      return;
+    }
+    if (!trimmedConfirm) {
+      setChangePasswordError("Please confirm your new password");
+      return;
+    }
+    if (trimmedNew !== trimmedConfirm) {
+      setChangePasswordError("New password and confirmation do not match");
       return;
     }
 
     setChangePasswordError(null);
     setChangePasswordLoading(true);
+    toastifyToast.info("Updating password...");
+
     try {
       const [endpoint, fallbackEndpoint] = apiVariantPaths("/auth/users/me/");
+      const payload = { password: trimmedNew, old_password: trimmedCurrent };
       try {
-        await userApi.patch(endpoint, { password: trimmed });
+        await userApi.patch(endpoint, payload);
       } catch (error: unknown) {
         if (getStatusCode(error) === 404) {
-          await userApi.patch(fallbackEndpoint, { password: trimmed });
+          await userApi.patch(fallbackEndpoint, payload);
         } else {
           throw error;
         }
       }
 
       setChangePasswordOpen(false);
+      setCurrentPassword("");
       setNewPassword("");
+      setConfirmPassword("");
     } catch (error: unknown) {
       setChangePasswordError(getErrorMessage(error));
     } finally {
       setChangePasswordLoading(false);
     }
-  }, [apiVariantPaths, getErrorMessage, getStatusCode, newPassword]);
+  }, [apiVariantPaths, confirmPassword, currentPassword, getErrorMessage, getStatusCode, newPassword]);
 
   // ============================================
   // 🔹 Fetch user data (commented for now)
@@ -847,7 +871,9 @@ const SettingsPage: React.FC = () => {
                 onClick={() => {
                   if (changePasswordLoading) return;
                   setChangePasswordOpen(false);
+                  setCurrentPassword("");
                   setNewPassword("");
+                  setConfirmPassword("");
                   setChangePasswordError(null);
                 }}
                 className="text-gray-300 hover:text-white transition"
@@ -864,6 +890,16 @@ const SettingsPage: React.FC = () => {
               </div>
             ) : null}
 
+            <label className="block text-sm text-gray-300 mb-2">Current password</label>
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              className="w-full bg-gray-700 px-4 py-3 rounded-md outline-none mb-4"
+              placeholder="Enter current password"
+              disabled={changePasswordLoading}
+            />
+
             <label className="block text-sm text-gray-300 mb-2">New password</label>
             <input
               type="password"
@@ -874,13 +910,25 @@ const SettingsPage: React.FC = () => {
               disabled={changePasswordLoading}
             />
 
+            <label className="block text-sm text-gray-300 mb-2 mt-4">Confirm new password</label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="w-full bg-gray-700 px-4 py-3 rounded-md outline-none"
+              placeholder="Confirm new password"
+              disabled={changePasswordLoading}
+            />
+
             <div className="flex justify-end gap-3 mt-5">
               <button
                 type="button"
                 onClick={() => {
                   if (changePasswordLoading) return;
                   setChangePasswordOpen(false);
+                  setCurrentPassword("");
                   setNewPassword("");
+                  setConfirmPassword("");
                   setChangePasswordError(null);
                 }}
                 className="bg-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-600 active:scale-95 transition"
@@ -901,6 +949,8 @@ const SettingsPage: React.FC = () => {
           </div>
         </div>
       ) : null}
+
+      <ToastContainer position="top-right" autoClose={2500} theme="dark" />
 
       {customOfferOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
