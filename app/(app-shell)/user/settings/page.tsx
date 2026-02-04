@@ -88,7 +88,8 @@ const SettingsPage: React.FC = () => {
         }
       }
       const message = errObj["message"];
-      if (typeof message === "string" && message.trim().length > 0) return message;
+      if (typeof message === "string" && message.trim().length > 0)
+        return message;
     }
     return "Failed to load subscription plans";
   }, []);
@@ -101,8 +102,20 @@ const SettingsPage: React.FC = () => {
     canceledPlans: [],
     aiTraining: false,
     sessions: [
-      { device: "MacBook Pro • Chrome", ip: "192.168.1.100", location: "San Francisco, CA", time: "Current session", active: true },
-      { device: "iPhone • Safari", ip: "192.168.1.101", location: "San Francisco, CA", time: "2 hours ago", active: false },
+      {
+        device: "MacBook Pro • Chrome",
+        ip: "192.168.1.100",
+        location: "San Francisco, CA",
+        time: "Current session",
+        active: true,
+      },
+      {
+        device: "iPhone • Safari",
+        ip: "192.168.1.101",
+        location: "San Francisco, CA",
+        time: "2 hours ago",
+        active: false,
+      },
     ],
   };
 
@@ -113,29 +126,43 @@ const SettingsPage: React.FC = () => {
   const [plansLoading, setPlansLoading] = useState(true);
   const [plansError, setPlansError] = useState<string | null>(null);
   const [activePlan, setActivePlan] = useState(fakeUserSettings.activePlan);
-  const [activeSubscription, setActiveSubscription] = useState<ApiActiveSubscription | null>(null);
-  const [activeSubscriptionLoading, setActiveSubscriptionLoading] = useState(true);
-  const [activeSubscriptionError, setActiveSubscriptionError] = useState<string | null>(null);
-  const [upgradeLoadingPlanId, setUpgradeLoadingPlanId] = useState<number | null>(null);
+  const [activeSubscription, setActiveSubscription] =
+    useState<ApiActiveSubscription | null>(null);
+  const [activeSubscriptionLoading, setActiveSubscriptionLoading] =
+    useState(true);
+  const [activeSubscriptionError, setActiveSubscriptionError] = useState<
+    string | null
+  >(null);
+  const [upgradeLoadingPlanId, setUpgradeLoadingPlanId] = useState<
+    number | null
+  >(null);
   const [upgradeError, setUpgradeError] = useState<string | null>(null);
-  const [canceledPlans, setCanceledPlans] = useState<string[]>(fakeUserSettings.canceledPlans);
+  const [canceledPlans, setCanceledPlans] = useState<string[]>(
+    fakeUserSettings.canceledPlans,
+  );
   const [aiTraining, setAiTraining] = useState(fakeUserSettings.aiTraining);
   const [sessions, setSessions] = useState<ApiSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
-  const [logoutLoadingSessionId, setLogoutLoadingSessionId] = useState<number | null>(null);
+  const [logoutLoadingSessionId, setLogoutLoadingSessionId] = useState<
+    number | null
+  >(null);
   const [logoutError, setLogoutError] = useState<string | null>(null);
   const [logoutAllLoading, setLogoutAllLoading] = useState(false);
   const [logoutAllError, setLogoutAllError] = useState<string | null>(null);
   const [stripeOnboardLoading, setStripeOnboardLoading] = useState(false);
-  const [stripeOnboardError, setStripeOnboardError] = useState<string | null>(null);
+  const [stripeOnboardError, setStripeOnboardError] = useState<string | null>(
+    null,
+  );
 
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changePasswordLoading, setChangePasswordLoading] = useState(false);
-  const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
+  const [changePasswordError, setChangePasswordError] = useState<string | null>(
+    null,
+  );
 
   const [customOfferOpen, setCustomOfferOpen] = useState(false);
   const [customMsgLimit, setCustomMsgLimit] = useState("");
@@ -176,7 +203,9 @@ const SettingsPage: React.FC = () => {
     const toastId = toast.loading("Sending request…");
 
     try {
-      const [endpoint, fallbackEndpoint] = apiVariantPaths("/admin/request-custom-plan/");
+      const [endpoint, fallbackEndpoint] = apiVariantPaths(
+        "/admin/request-custom-plan/",
+      );
       const payload = { msg_limit, user_limit, token_limit };
 
       try {
@@ -199,17 +228,23 @@ const SettingsPage: React.FC = () => {
     } finally {
       setCustomOfferLoading(false);
     }
-  }, [apiVariantPaths, customMsgLimit, customOfferLoading, customTokenLimit, customUserLimit, getErrorMessage, getStatusCode]);
+  }, [
+    apiVariantPaths,
+    customMsgLimit,
+    customOfferLoading,
+    customTokenLimit,
+    customUserLimit,
+    getErrorMessage,
+    getStatusCode,
+  ]);
 
   const sortedSessions = useMemo(() => {
-    return sessions
-      .slice()
-      .sort((a, b) => {
-        const aTime = Date.parse(a.last_active);
-        const bTime = Date.parse(b.last_active);
-        if (Number.isNaN(aTime) || Number.isNaN(bTime)) return 0;
-        return bTime - aTime;
-      });
+    return sessions.slice().sort((a, b) => {
+      const aTime = Date.parse(a.last_active);
+      const bTime = Date.parse(b.last_active);
+      if (Number.isNaN(aTime) || Number.isNaN(bTime)) return 0;
+      return bTime - aTime;
+    });
   }, [sessions]);
 
   const mostRecentSessionId = useMemo(() => {
@@ -225,34 +260,41 @@ const SettingsPage: React.FC = () => {
     return mostRecent?.session_id ?? null;
   }, [sessions]);
 
-  const loadActiveSubscription = useCallback(async (opts?: { silent?: boolean }) => {
-    const silent = opts?.silent ?? false;
-    if (!silent) {
-      setActiveSubscriptionLoading(true);
-      setActiveSubscriptionError(null);
-    }
-    try {
-      let res;
-      try {
-        res = await userApi.get<ApiActiveSubscription[]>("/finance/check-plan/");
-      } catch (error: unknown) {
-        if (getStatusCode(error) === 404) {
-          res = await userApi.get<ApiActiveSubscription[]>("/api/finance/check-plan/");
-        } else {
-          throw error;
-        }
+  const loadActiveSubscription = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      const silent = opts?.silent ?? false;
+      if (!silent) {
+        setActiveSubscriptionLoading(true);
+        setActiveSubscriptionError(null);
       }
+      try {
+        let res;
+        try {
+          res = await userApi.get<ApiActiveSubscription[]>(
+            "/finance/check-plan/",
+          );
+        } catch (error: unknown) {
+          if (getStatusCode(error) === 404) {
+            res = await userApi.get<ApiActiveSubscription[]>(
+              "/api/finance/check-plan/",
+            );
+          } else {
+            throw error;
+          }
+        }
 
-      const list = Array.isArray(res.data) ? res.data : [];
-      const active = list.find((x) => x?.active) ?? null;
-      setActiveSubscription(active);
-      setActivePlan(active?.plan_name ?? null);
-    } catch (error: unknown) {
-      setActiveSubscriptionError(getErrorMessage(error));
-    } finally {
-      if (!silent) setActiveSubscriptionLoading(false);
-    }
-  }, [getErrorMessage, getStatusCode]);
+        const list = Array.isArray(res.data) ? res.data : [];
+        const active = list.find((x) => x?.active) ?? null;
+        setActiveSubscription(active);
+        setActivePlan(active?.plan_name ?? null);
+      } catch (error: unknown) {
+        setActiveSubscriptionError(getErrorMessage(error));
+      } finally {
+        if (!silent) setActiveSubscriptionLoading(false);
+      }
+    },
+    [getErrorMessage, getStatusCode],
+  );
 
   // ============================================
   // 🔹 Fetch subscription plans
@@ -374,7 +416,7 @@ const SettingsPage: React.FC = () => {
       setLogoutLoadingSessionId(sessionId);
       try {
         const [endpoint, fallbackEndpoint] = apiVariantPaths(
-          `/auth/logout-session/${sessionId}/`
+          `/auth/logout-session/${sessionId}/`,
         );
 
         try {
@@ -394,7 +436,7 @@ const SettingsPage: React.FC = () => {
         setLogoutLoadingSessionId(null);
       }
     },
-    [apiVariantPaths, getErrorMessage, getStatusCode, refreshSessions]
+    [apiVariantPaths, getErrorMessage, getStatusCode, refreshSessions],
   );
 
   const handleLogoutAllDevices = useCallback(async () => {
@@ -402,7 +444,7 @@ const SettingsPage: React.FC = () => {
     setLogoutAllLoading(true);
     try {
       const [endpoint, fallbackEndpoint] = apiVariantPaths(
-        "/auth/logout-all-sessions/"
+        "/auth/logout-all-sessions/",
       );
 
       try {
@@ -439,7 +481,7 @@ const SettingsPage: React.FC = () => {
     setStripeOnboardLoading(true);
     try {
       const [endpoint, fallbackEndpoint] = apiVariantPaths(
-        "/finance/connect/onboard/"
+        "/finance/connect/onboard/",
       );
 
       let res;
@@ -459,7 +501,9 @@ const SettingsPage: React.FC = () => {
         return;
       }
 
-      setStripeOnboardError("Stripe onboarding URL was not provided by the server");
+      setStripeOnboardError(
+        "Stripe onboarding URL was not provided by the server",
+      );
     } catch (error: unknown) {
       setStripeOnboardError(getErrorMessage(error));
     } finally {
@@ -515,7 +559,14 @@ const SettingsPage: React.FC = () => {
     } finally {
       setChangePasswordLoading(false);
     }
-  }, [apiVariantPaths, confirmPassword, currentPassword, getErrorMessage, getStatusCode, newPassword]);
+  }, [
+    apiVariantPaths,
+    confirmPassword,
+    currentPassword,
+    getErrorMessage,
+    getStatusCode,
+    newPassword,
+  ]);
 
   // ============================================
   // 🔹 Fetch user data (commented for now)
@@ -563,7 +614,7 @@ const SettingsPage: React.FC = () => {
           payload,
           {
             validateStatus: (status) => status >= 200 && status < 400,
-          }
+          },
         );
         const redirectUrl = res.data?.redirect_url;
         if (typeof redirectUrl === "string" && redirectUrl.trim().length > 0) {
@@ -577,10 +628,13 @@ const SettingsPage: React.FC = () => {
             payload,
             {
               validateStatus: (status) => status >= 200 && status < 400,
-            }
+            },
           );
           const redirectUrl = res.data?.redirect_url;
-          if (typeof redirectUrl === "string" && redirectUrl.trim().length > 0) {
+          if (
+            typeof redirectUrl === "string" &&
+            redirectUrl.trim().length > 0
+          ) {
             window.location.assign(redirectUrl);
             return;
           }
@@ -638,7 +692,9 @@ const SettingsPage: React.FC = () => {
 
           {stripeOnboardError ? (
             <div className="mt-4">
-              <p className="text-red-400 font-semibold text-sm">Stripe onboarding failed</p>
+              <p className="text-red-400 font-semibold text-sm">
+                Stripe onboarding failed
+              </p>
               <p className="text-gray-400 text-sm mt-1">{stripeOnboardError}</p>
             </div>
           ) : null}
@@ -657,8 +713,12 @@ const SettingsPage: React.FC = () => {
           </div>
         ) : activeSubscriptionError ? (
           <div className="bg-[#272727] rounded-xl p-6 shadow-lg mb-6">
-            <p className="text-red-400 font-semibold">Failed to load active subscription</p>
-            <p className="text-gray-400 text-sm mt-1">{activeSubscriptionError}</p>
+            <p className="text-red-400 font-semibold">
+              Failed to load active subscription
+            </p>
+            <p className="text-gray-400 text-sm mt-1">
+              {activeSubscriptionError}
+            </p>
           </div>
         ) : activeSubscription ? (
           <div className="bg-[#272727] rounded-xl p-6 shadow-lg mb-6">
@@ -666,18 +726,24 @@ const SettingsPage: React.FC = () => {
               <div>
                 <p className="text-gray-400 text-sm">Current plan</p>
                 <p className="text-white font-semibold">
-                  {activeSubscription.plan_name} • {activeSubscription.plan_duration} • ${activeSubscription.plan_price}
+                  {activeSubscription.plan_name} •{" "}
+                  {activeSubscription.plan_duration} • $
+                  {activeSubscription.plan_price}
                 </p>
                 <p className="text-gray-400 text-sm mt-1">
-                  {activeSubscription.auto_renew ? "Auto-renew: On" : "Auto-renew: Off"}
+                  {activeSubscription.auto_renew
+                    ? "Auto-renew: On"
+                    : "Auto-renew: Off"}
                 </p>
               </div>
               <div className="text-sm text-gray-300">
                 <p>
-                  <span className="text-gray-400">Start:</span> {new Date(activeSubscription.start).toLocaleString()}
+                  <span className="text-gray-400">Start:</span>{" "}
+                  {new Date(activeSubscription.start).toLocaleString()}
                 </p>
                 <p>
-                  <span className="text-gray-400">End:</span> {new Date(activeSubscription.end).toLocaleString()}
+                  <span className="text-gray-400">End:</span>{" "}
+                  {new Date(activeSubscription.end).toLocaleString()}
                 </p>
               </div>
             </div>
@@ -718,7 +784,8 @@ const SettingsPage: React.FC = () => {
                   <div className="flex justify-between items-center mb-2">
                     <h3 className="text-lg font-semibold">{plan.name}</h3>
                     <p className="text-blue-400 font-semibold">
-                      ${plan.price}/<span className="text-sm">{plan.duration}</span>
+                      ${plan.price}/
+                      <span className="text-sm">{plan.duration}</span>
                     </p>
                   </div>
 
@@ -785,13 +852,17 @@ const SettingsPage: React.FC = () => {
             <h4 className="font-semibold mb-2">Active Sessions</h4>
             {logoutError ? (
               <div className="mb-3">
-                <p className="text-red-400 font-semibold text-sm">Logout failed</p>
+                <p className="text-red-400 font-semibold text-sm">
+                  Logout failed
+                </p>
                 <p className="text-gray-400 text-sm mt-1">{logoutError}</p>
               </div>
             ) : null}
             {logoutAllError ? (
               <div className="mb-3">
-                <p className="text-red-400 font-semibold text-sm">Logout all devices failed</p>
+                <p className="text-red-400 font-semibold text-sm">
+                  Logout all devices failed
+                </p>
                 <p className="text-gray-400 text-sm mt-1">{logoutAllError}</p>
               </div>
             ) : null}
@@ -799,7 +870,9 @@ const SettingsPage: React.FC = () => {
               <div className="text-sm text-gray-300">Loading sessions...</div>
             ) : sessionsError ? (
               <div>
-                <p className="text-red-400 font-semibold text-sm">Failed to load sessions</p>
+                <p className="text-red-400 font-semibold text-sm">
+                  Failed to load sessions
+                </p>
                 <p className="text-gray-400 text-sm mt-1">{sessionsError}</p>
               </div>
             ) : sessions.length === 0 ? (
@@ -829,7 +902,9 @@ const SettingsPage: React.FC = () => {
                         </p>
                       </div>
                       {isActive ? (
-                        <span className="text-green-400 text-xs self-center">Active</span>
+                        <span className="text-green-400 text-xs self-center">
+                          Active
+                        </span>
                       ) : (
                         <button
                           type="button"
@@ -853,7 +928,9 @@ const SettingsPage: React.FC = () => {
                     logoutAllLoading ? "opacity-70 cursor-not-allowed" : ""
                   }`}
                 >
-                  {logoutAllLoading ? "Logging out..." : "Logout from all devices"}
+                  {logoutAllLoading
+                    ? "Logging out..."
+                    : "Logout from all devices"}
                 </button>
               </div>
             )}
@@ -885,12 +962,18 @@ const SettingsPage: React.FC = () => {
 
             {changePasswordError ? (
               <div className="mb-3">
-                <p className="text-red-400 font-semibold text-sm">Update failed</p>
-                <p className="text-gray-400 text-sm mt-1">{changePasswordError}</p>
+                <p className="text-red-400 font-semibold text-sm">
+                  Update failed
+                </p>
+                <p className="text-gray-400 text-sm mt-1">
+                  {changePasswordError}
+                </p>
               </div>
             ) : null}
 
-            <label className="block text-sm text-gray-300 mb-2">Current password</label>
+            <label className="block text-sm text-gray-300 mb-2">
+              Current password
+            </label>
             <input
               type="password"
               value={currentPassword}
@@ -900,7 +983,9 @@ const SettingsPage: React.FC = () => {
               disabled={changePasswordLoading}
             />
 
-            <label className="block text-sm text-gray-300 mb-2">New password</label>
+            <label className="block text-sm text-gray-300 mb-2">
+              New password
+            </label>
             <input
               type="password"
               value={newPassword}
@@ -910,7 +995,9 @@ const SettingsPage: React.FC = () => {
               disabled={changePasswordLoading}
             />
 
-            <label className="block text-sm text-gray-300 mb-2 mt-4">Confirm new password</label>
+            <label className="block text-sm text-gray-300 mb-2 mt-4">
+              Confirm new password
+            </label>
             <input
               type="password"
               value={confirmPassword}
@@ -972,7 +1059,9 @@ const SettingsPage: React.FC = () => {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-300 mb-2">Message limit</label>
+                <label className="block text-sm text-gray-300 mb-2">
+                  Message limit
+                </label>
                 <input
                   type="number"
                   inputMode="numeric"
@@ -985,7 +1074,9 @@ const SettingsPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm text-gray-300 mb-2">User limit</label>
+                <label className="block text-sm text-gray-300 mb-2">
+                  User limit
+                </label>
                 <input
                   type="number"
                   inputMode="numeric"
@@ -998,7 +1089,9 @@ const SettingsPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm text-gray-300 mb-2">Token limit</label>
+                <label className="block text-sm text-gray-300 mb-2">
+                  Token limit
+                </label>
                 <input
                   type="number"
                   inputMode="numeric"
@@ -1036,8 +1129,6 @@ const SettingsPage: React.FC = () => {
           </div>
         </div>
       ) : null}
-
-
     </div>
   );
 };

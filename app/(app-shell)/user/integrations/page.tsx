@@ -3,6 +3,8 @@
 import { userapi } from "@/lib/http/client";
 import axios from "axios";
 import React, { useCallback, useEffect, useState } from "react";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 type UnknownRecord = Record<string, unknown>;
 function isRecord(value: unknown): value is UnknownRecord {
@@ -120,6 +122,19 @@ function parseRedirectUrl(payload: unknown): string {
   if (!isRecord(payload)) return "";
   const url = payload.redirect_url;
   return typeof url === "string" ? url : "";
+}
+
+function getPlatformLabel(platform: Platform): string {
+  switch (platform) {
+    case "facebook":
+      return "Facebook";
+    case "whatsapp":
+      return "WhatsApp";
+    case "instagram":
+      return "Instagram";
+    default:
+      return platform;
+  }
 }
 
 const IntegrationPage: React.FC = () => {
@@ -271,10 +286,15 @@ const IntegrationPage: React.FC = () => {
       try {
         const next = await patchBotActive(platform, nextValue);
         setStatus(platform, { active: next });
+        toast.success(
+          `${getPlatformLabel(platform)} bot ${next ? "enabled" : "disabled"}`,
+        );
       } catch (e: unknown) {
+        const message = getApiErrorMessage(e, "Failed to update");
         setStatus(platform, {
-          error: getApiErrorMessage(e, "Failed to update"),
+          error: message,
         });
+        toast.error(message);
       } finally {
         setStatus(platform, { loading: false });
       }
@@ -284,6 +304,7 @@ const IntegrationPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-black text-white p-8">
+      <ToastContainer position="top-right" autoClose={2500} theme="dark" />
       <h1 className="text-2xl font-bold mb-6">Integrations</h1>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
         {INTEGRATIONS.map((integration) => {
