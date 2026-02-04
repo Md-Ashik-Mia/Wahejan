@@ -1,9 +1,9 @@
 "use client";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 // import { ChevronDown } from "lucide-react";
-import { useSession } from "next-auth/react";
 import { adminApi } from "@/lib/http/client";
 import axios from "axios";
+import { useSession } from "next-auth/react";
 
 interface User {
   id: number;
@@ -25,6 +25,14 @@ type ApiUser = {
   company?: { name?: string | null } | string | null;
 };
 
+type PaginatedResponse<T> = {
+  count?: number;
+  next?: string | null;
+  previous?: string | null;
+  results?: T[];
+  data?: T[];
+};
+
 function normalizeStatus(isActive: unknown): "Active" | "Deactive" {
   return isActive === true ? "Active" : "Deactive";
 }
@@ -36,7 +44,8 @@ function getCompanyName(u: ApiUser): string {
   const company = u.company;
   if (!company) return "";
   if (typeof company === "string") return company;
-  if (typeof company === "object" && typeof company.name === "string") return company.name;
+  if (typeof company === "object" && typeof company.name === "string")
+    return company.name;
   return "";
 }
 
@@ -58,12 +67,17 @@ const UsersPage: React.FC = () => {
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [sortStatus, setSortStatus] = useState<"All" | "Active" | "Deactive">(
-    "All"
+    "All",
   );
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
+  const [hasPrev, setHasPrev] = useState(false);
 
   // =======================
   // 🔹 Fetch Users from Backend
@@ -71,7 +85,8 @@ const UsersPage: React.FC = () => {
   useEffect(() => {
     if (sessionStatus === "loading") return;
 
-    const accessToken = (session as unknown as { accessToken?: string } | null)?.accessToken;
+    const accessToken = (session as unknown as { accessToken?: string } | null)
+      ?.accessToken;
     if (!accessToken) {
       setError("Missing access token.");
       setLoading(false);
@@ -84,19 +99,33 @@ const UsersPage: React.FC = () => {
         setError(null);
 
         const res = await adminApi.get("/admin/users/", {
+          params: { page },
           headers: {
             Authorization: `Bearer ${accessToken}`,
           },
         });
 
-        const payload = res.data;
+        const payload = res.data as PaginatedResponse<ApiUser> | ApiUser[];
         const list: ApiUser[] = Array.isArray(payload)
           ? payload
           : Array.isArray(payload?.results)
-          ? payload.results
-          : Array.isArray(payload?.data)
-          ? payload.data
-          : [];
+            ? payload.results
+            : Array.isArray(payload?.data)
+              ? payload.data
+              : [];
+
+        if (!Array.isArray(payload)) {
+          const count =
+            typeof payload?.count === "number" ? payload.count : list.length;
+          setTotalCount(count);
+          setHasNext(Boolean(payload?.next));
+          setHasPrev(Boolean(payload?.previous));
+        } else {
+          setTotalCount(list.length);
+          setHasNext(false);
+          setHasPrev(false);
+        }
+        setPageSize(list.length);
 
         const mapped = list.map(mapApiUser).filter((u) => u.id !== 0);
         setAllUsers(mapped);
@@ -110,7 +139,9 @@ const UsersPage: React.FC = () => {
       } catch (err) {
         if (axios.isAxiosError(err)) {
           const code = err.response?.status;
-          setError(code ? `Failed to load users (${code}).` : "Failed to load users.");
+          setError(
+            code ? `Failed to load users (${code}).` : "Failed to load users.",
+          );
         } else {
           setError("Failed to load users.");
         }
@@ -121,7 +152,7 @@ const UsersPage: React.FC = () => {
 
     fetchUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, sessionStatus]);
+  }, [session, sessionStatus, page]);
 
   // =======================
   // 🔹 Sorting Handler
@@ -137,6 +168,9 @@ const UsersPage: React.FC = () => {
       setUsers(filtered);
     }
   };
+
+  const totalPages =
+    pageSize > 0 ? Math.max(1, Math.ceil(totalCount / pageSize)) : 1;
 
   // =======================
   // 🔹 Close Dropdown on Outside Click
@@ -264,6 +298,32 @@ const UsersPage: React.FC = () => {
             </p>
           )}
         </div>
+
+        {!loading && !error && totalPages > 1 && (
+          <div className="flex items-center justify-between pt-4">
+            <p className="text-sm text-gray-400">
+              Page {page} of {totalPages}
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={!hasPrev}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="px-3 py-1.5 rounded-md bg-gray-700 text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Prev
+              </button>
+              <button
+                type="button"
+                disabled={!hasNext}
+                onClick={() => setPage((p) => p + 1)}
+                className="px-3 py-1.5 rounded-md bg-gray-700 text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

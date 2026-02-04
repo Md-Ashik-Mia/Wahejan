@@ -1,12 +1,11 @@
 "use client";
+import { adminApi } from "@/lib/http/client";
+import axios from "axios";
+import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useState } from "react";
 import CustomPlanList from "./components//CustomPlanList";
 import CompanyFilter from "./components/CompanyFilter";
 import CompanyList from "./components/CompanyList";
-import CustomPlanForm from "./components/CustomPlanForm";
-import { useSession } from "next-auth/react";
-import axios from "axios";
-import { adminApi } from "@/lib/http/client";
 
 export interface Company {
   id: number;
@@ -65,6 +64,14 @@ type ApiCompany = {
   is_active?: boolean;
 };
 
+type PaginatedResponse<T> = {
+  count?: number;
+  next?: string | null;
+  previous?: string | null;
+  results?: T[];
+  data?: T[];
+};
+
 function formatJoinDate(value: string): string {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
@@ -79,10 +86,13 @@ function mapApiCompany(c: ApiCompany): Company {
   const joinDateRaw = (c.joining_date ?? "").toString();
   const joinDate = joinDateRaw ? formatJoinDate(joinDateRaw) : "";
   const invoiceNo =
-    (isRecord(c.invoice) && typeof c.invoice.name === "string" && c.invoice.name) ||
+    (isRecord(c.invoice) &&
+      typeof c.invoice.name === "string" &&
+      c.invoice.name) ||
     (id ? String(id) : "");
   const totalPaid = typeof c.total_paid === "number" ? c.total_paid : 0;
-  const status: "Active" | "Inactive" = c.is_active === true ? "Active" : "Inactive";
+  const status: "Active" | "Inactive" =
+    c.is_active === true ? "Active" : "Inactive";
 
   return {
     id,
@@ -105,8 +115,17 @@ const AdminCompaniesPage = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
+  const [hasPrev, setHasPrev] = useState(false);
 
-  const [filters, setFilters] = useState({ status: "All", plan: "All", search: "" });
+  const [filters, setFilters] = useState({
+    status: "All",
+    plan: "All",
+    search: "",
+  });
   const [customPlans, setCustomPlans] = useState<CustomPlan[]>([]);
 
   useEffect(() => {
@@ -125,12 +144,15 @@ const AdminCompaniesPage = () => {
         setError(null);
 
         const res = await adminApi.get("/admin/companies/", {
+          params: { page },
           headers: {
             Authorization: `Bearer ${token}`,
           },
         });
 
-        const payload: unknown = res.data;
+        const payload = res.data as
+          | PaginatedResponse<ApiCompany>
+          | ApiCompany[];
         let list: ApiCompany[] = [];
 
         if (Array.isArray(payload)) {
@@ -141,12 +163,29 @@ const AdminCompaniesPage = () => {
           list = payload["data"] as ApiCompany[];
         }
 
+        if (!Array.isArray(payload)) {
+          const count =
+            typeof payload?.count === "number" ? payload.count : list.length;
+          setTotalCount(count);
+          setHasNext(Boolean(payload?.next));
+          setHasPrev(Boolean(payload?.previous));
+        } else {
+          setTotalCount(list.length);
+          setHasNext(false);
+          setHasPrev(false);
+        }
+        setPageSize(list.length);
+
         const mapped = list.map(mapApiCompany).filter((c) => c.id !== 0);
         setCompanies(mapped);
       } catch (err) {
         if (axios.isAxiosError(err)) {
           const code = err.response?.status;
-          setError(code ? `Failed to load companies (${code}).` : "Failed to load companies.");
+          setError(
+            code
+              ? `Failed to load companies (${code}).`
+              : "Failed to load companies.",
+          );
         } else {
           setError("Failed to load companies.");
         }
@@ -156,7 +195,7 @@ const AdminCompaniesPage = () => {
     };
 
     fetchCompanies();
-  }, [session, sessionStatus]);
+  }, [session, sessionStatus, page]);
 
   const handleAddPlan = (newPlan: CustomPlan) => {
     setCustomPlans((prev) => [...prev, { ...newPlan, id: prev.length + 1 }]);
@@ -168,12 +207,18 @@ const AdminCompaniesPage = () => {
 
   const filteredCompanies = useMemo(() => {
     return companies.filter((c) => {
-      const matchStatus = filters.status === "All" || c.status === filters.status;
+      const matchStatus =
+        filters.status === "All" || c.status === filters.status;
       const matchPlan = filters.plan === "All" || c.plan === filters.plan;
-      const matchSearch = c.name.toLowerCase().includes(filters.search.toLowerCase());
+      const matchSearch = c.name
+        .toLowerCase()
+        .includes(filters.search.toLowerCase());
       return matchStatus && matchPlan && matchSearch;
     });
   }, [companies, filters.plan, filters.search, filters.status]);
+
+  const totalPages =
+    pageSize > 0 ? Math.max(1, Math.ceil(totalCount / pageSize)) : 1;
 
   return (
     <div className="min-h-screen bg-black text-white p-6 space-y-10">
@@ -187,11 +232,40 @@ const AdminCompaniesPage = () => {
 
       {/* <CustomPlanForm companies={companies} onAddCustomPlan={handleAddPlan} /> */}
 
-      <CustomPlanList customPlans={customPlans} onDeletePlan={handleDeletePlan} />
+      <CustomPlanList
+        customPlans={customPlans}
+        onDeletePlan={handleDeletePlan}
+      />
 
       <CompanyFilter filters={filters} setFilters={setFilters} />
 
       <CompanyList companies={filteredCompanies} />
+
+      {!loading && !error && totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-gray-400">
+            Page {page} of {totalPages}
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={!hasPrev}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="px-3 py-1.5 rounded-md bg-gray-700 text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Prev
+            </button>
+            <button
+              type="button"
+              disabled={!hasNext}
+              onClick={() => setPage((p) => p + 1)}
+              className="px-3 py-1.5 rounded-md bg-gray-700 text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
