@@ -4,6 +4,8 @@ import axios from "axios";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 type SessionWithAccessToken = { accessToken?: string };
 
@@ -171,12 +173,14 @@ export default function TeamMembersPage() {
 
     if (!inviteEmail || !inviteEmail.includes("@")) {
       setInviteError("Please enter a valid email address.");
+      toast.error("Please enter a valid email address.");
       return;
     }
 
     const token = getAccessToken(session);
     if (!token) {
       setInviteError("Missing access token.");
+      toast.error("Missing access token.");
       return;
     }
 
@@ -192,6 +196,7 @@ export default function TeamMembersPage() {
         },
       );
       setInviteSuccess("Invitation sent successfully.");
+      toast.success("Invitation sent successfully");
       setInviteEmail("");
     } catch (err) {
       if (axios.isAxiosError(err)) {
@@ -200,8 +205,10 @@ export default function TeamMembersPage() {
           err.response?.data?.detail ||
           "Failed to send invitation.";
         setInviteError(msg);
+        toast.error(msg);
       } else {
         setInviteError("Failed to send invitation.");
+        toast.error("Failed to send invitation.");
       }
     } finally {
       setInviteLoading(false);
@@ -215,6 +222,7 @@ export default function TeamMembersPage() {
 
   return (
     <div className="min-h-screen bg-black text-white p-6 space-y-8">
+      <ToastContainer position="top-right" autoClose={2500} theme="dark" />
       <h2 className="text-xl font-semibold">Admin Control Center</h2>
       <h3 className="text-lg font-medium">Team Members</h3>
 

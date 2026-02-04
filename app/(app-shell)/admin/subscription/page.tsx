@@ -1,8 +1,9 @@
-
 "use client";
 
 import { Check, Edit, Loader2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,12 +53,14 @@ function getErrorDetail(error: unknown, fallback: string): string {
   const data = (response as Record<string, unknown>)?.data;
   if (!data || typeof data !== "object") return fallback;
   const detail = (data as Record<string, unknown>)?.detail;
-  return typeof detail === "string" && detail.trim().length > 0 ? detail : fallback;
+  return typeof detail === "string" && detail.trim().length > 0
+    ? detail
+    : fallback;
 }
 
 async function requestWithCandidates<T>(
   fn: (endpoint: string) => Promise<T>,
-  candidates: string[]
+  candidates: string[],
 ): Promise<T> {
   let lastError: unknown = null;
   for (const endpoint of candidates) {
@@ -74,7 +77,10 @@ async function requestWithCandidates<T>(
 // In that case endpoints must NOT start with `/api`, otherwise we hit `/api/api/...`.
 const ADMIN_ENDPOINTS = {
   plans: ["/admin/subscription-plan/", "/api/admin/subscription-plan/"],
-  planById: (id: number) => [`/admin/subscription-plan/${id}/`, `/api/admin/subscription-plan/${id}/`],
+  planById: (id: number) => [
+    `/admin/subscription-plan/${id}/`,
+    `/api/admin/subscription-plan/${id}/`,
+  ],
   requests: ["/admin/user-plan-requests/", "/api/admin/user-plan-requests/"],
   approve: ["/admin/approve-user-plan/", "/api/admin/approve-user-plan/"],
   reject: ["/admin/reject-user-plan/", "/api/admin/reject-user-plan/"],
@@ -116,7 +122,9 @@ export default function SubscriptionPage() {
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [requestsError, setRequestsError] = useState<string | null>(null);
   const [requestActionId, setRequestActionId] = useState<number | null>(null);
-  const [requestPrices, setRequestPrices] = useState<Record<number, string>>({});
+  const [requestPrices, setRequestPrices] = useState<Record<number, string>>(
+    {},
+  );
 
   const fetchPlans = useCallback(async () => {
     try {
@@ -124,11 +132,11 @@ export default function SubscriptionPage() {
       setPlansLoading(true);
       const { data } = await requestWithCandidates(
         (endpoint) => adminApi.get<SubscriptionPlan[]>(endpoint),
-        [...ADMIN_ENDPOINTS.plans]
+        [...ADMIN_ENDPOINTS.plans],
       );
       setPlans(Array.isArray(data) ? data : []);
-      } catch (err: unknown) {
-        setPlansError(getErrorDetail(err, "Failed to load plans"));
+    } catch (err: unknown) {
+      setPlansError(getErrorDetail(err, "Failed to load plans"));
     } finally {
       setPlansLoading(false);
     }
@@ -140,11 +148,11 @@ export default function SubscriptionPage() {
       setRequestsLoading(true);
       const { data } = await requestWithCandidates(
         (endpoint) => adminApi.get<UserPlanRequest[]>(endpoint),
-        [...ADMIN_ENDPOINTS.requests]
+        [...ADMIN_ENDPOINTS.requests],
       );
       setRequests(Array.isArray(data) ? data : []);
-      } catch (err: unknown) {
-        setRequestsError(getErrorDetail(err, "Failed to load requests"));
+    } catch (err: unknown) {
+      setRequestsError(getErrorDetail(err, "Failed to load requests"));
     } finally {
       setRequestsLoading(false);
     }
@@ -154,7 +162,8 @@ export default function SubscriptionPage() {
     fetchPlans();
   }, [fetchPlans]);
 
-  const headerTitle = view === "plans" ? "Subscription Management" : "Subscription Requests";
+  const headerTitle =
+    view === "plans" ? "Subscription Management" : "Subscription Requests";
 
   const openEdit = useCallback((plan: SubscriptionPlan) => {
     setEditingPlan(plan);
@@ -178,23 +187,27 @@ export default function SubscriptionPage() {
       token_limit: Number(draft.token_limit),
     };
 
-    if (!payload.name) return alert("Plan name is required");
-    if (!payload.duration) return alert("Duration is required");
-    if (!payload.price) return alert("Price is required");
-    if (!Number.isFinite(payload.msg_limit)) return alert("Message limit must be a number");
-    if (!Number.isFinite(payload.user_limit)) return alert("User limit must be a number");
-    if (!Number.isFinite(payload.token_limit)) return alert("Token limit must be a number");
+    if (!payload.name) return toast.error("Plan name is required");
+    if (!payload.duration) return toast.error("Duration is required");
+    if (!payload.price) return toast.error("Price is required");
+    if (!Number.isFinite(payload.msg_limit))
+      return toast.error("Message limit must be a number");
+    if (!Number.isFinite(payload.user_limit))
+      return toast.error("User limit must be a number");
+    if (!Number.isFinite(payload.token_limit))
+      return toast.error("Token limit must be a number");
 
     try {
       setSavingPlan(true);
       await requestWithCandidates(
         (endpoint) => adminApi.patch(endpoint, payload),
-        ADMIN_ENDPOINTS.planById(editingPlan.id)
+        ADMIN_ENDPOINTS.planById(editingPlan.id),
       );
       closeEdit();
       await fetchPlans();
+      toast.success("Plan updated");
     } catch (err: unknown) {
-      alert(getErrorDetail(err, "Failed to update plan"));
+      toast.error(getErrorDetail(err, "Failed to update plan"));
     } finally {
       setSavingPlan(false);
     }
@@ -204,7 +217,7 @@ export default function SubscriptionPage() {
     async (requestId: number, priceRaw: string) => {
       const price = Number.parseFloat(String(priceRaw).trim());
       if (!Number.isFinite(price)) {
-        alert("Price is required to approve and must be a number");
+        toast.error("Price is required to approve and must be a number");
         return;
       }
 
@@ -216,16 +229,17 @@ export default function SubscriptionPage() {
               id: requestId,
               price,
             }),
-          [...ADMIN_ENDPOINTS.approve]
+          [...ADMIN_ENDPOINTS.approve],
         );
         await fetchRequests();
+        toast.success("Request approved");
       } catch (err: unknown) {
-        alert(getErrorDetail(err, "Failed to approve request"));
+        toast.error(getErrorDetail(err, "Failed to approve request"));
       } finally {
         setRequestActionId(null);
       }
     },
-    [fetchRequests]
+    [fetchRequests],
   );
 
   const plansContent = useMemo(() => {
@@ -352,21 +366,35 @@ export default function SubscriptionPage() {
 
               <div className="mt-5 grid grid-cols-3 gap-4">
                 <div>
-                  <div className="text-xs tracking-wide text-muted-foreground">MESSAGE LIMIT</div>
-                  <div className="mt-1 text-lg font-semibold">{formatNumber(req.msg_limit)}</div>
+                  <div className="text-xs tracking-wide text-muted-foreground">
+                    MESSAGE LIMIT
+                  </div>
+                  <div className="mt-1 text-lg font-semibold">
+                    {formatNumber(req.msg_limit)}
+                  </div>
                 </div>
                 <div>
-                  <div className="text-xs tracking-wide text-muted-foreground">USER LIMIT</div>
-                  <div className="mt-1 text-lg font-semibold">{formatNumber(req.user_limit)}</div>
+                  <div className="text-xs tracking-wide text-muted-foreground">
+                    USER LIMIT
+                  </div>
+                  <div className="mt-1 text-lg font-semibold">
+                    {formatNumber(req.user_limit)}
+                  </div>
                 </div>
                 <div>
-                  <div className="text-xs tracking-wide text-muted-foreground">TOKEN LIMIT</div>
-                  <div className="mt-1 text-lg font-semibold">{formatNumber(req.token_limit)}</div>
+                  <div className="text-xs tracking-wide text-muted-foreground">
+                    TOKEN LIMIT
+                  </div>
+                  <div className="mt-1 text-lg font-semibold">
+                    {formatNumber(req.token_limit)}
+                  </div>
                 </div>
               </div>
 
               <div className="mt-5 space-y-2">
-                <div className="text-xs tracking-wide text-muted-foreground">PRICE</div>
+                <div className="text-xs tracking-wide text-muted-foreground">
+                  PRICE
+                </div>
                 <Input
                   value={priceValue}
                   onChange={(e) =>
@@ -380,7 +408,7 @@ export default function SubscriptionPage() {
                 />
               </div>
 
-              <div className="mt-6 flex justify-center">
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
                 <Button
                   disabled={busy}
                   onClick={() => approveRequest(req.id, priceValue)}
@@ -395,10 +423,19 @@ export default function SubscriptionPage() {
         })}
       </div>
     );
-  }, [approveRequest, fetchRequests, requestActionId, requestPrices, requests, requestsError, requestsLoading]);
+  }, [
+    approveRequest,
+    fetchRequests,
+    requestActionId,
+    requestPrices,
+    requests,
+    requestsError,
+    requestsLoading,
+  ]);
 
   return (
     <div className="min-h-screen bg-black text-white">
+      <ToastContainer position="top-right" autoClose={2500} theme="dark" />
       <div className="mx-auto max-w-6xl px-6 py-8">
         <div className="flex items-center justify-between gap-4">
           <div className="text-2xl font-semibold tracking-tight">
@@ -432,18 +469,21 @@ export default function SubscriptionPage() {
       </div>
 
       {editingPlan && draft ? (
-        <div className="fixed inset-0 z-50">
-          <div
-            className="absolute inset-0 bg-black/60"
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default"
             onClick={closeEdit}
-            aria-hidden
+            aria-label="Close"
           />
-            <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-3xl rounded-t-3xl border border-border bg-card p-6 shadow-lg text-foreground">
+          <div className="relative w-full max-w-2xl rounded-2xl border border-gray-700 bg-[#121212] p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="text-xl font-semibold">Update Subscription Plan</div>
-                <div className="mt-1 text-sm text-muted-foreground">
-                  Edit plan details and save changes
+                <div className="text-lg font-semibold">
+                  Update Subscription Plan
+                </div>
+                <div className="mt-1 text-xs text-gray-400">
+                  Edit details and save
                 </div>
               </div>
               <Button variant="ghost" size="icon" onClick={closeEdit}>
@@ -451,7 +491,7 @@ export default function SubscriptionPage() {
               </Button>
             </div>
 
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Plan Name</Label>
                 <Input
@@ -464,7 +504,9 @@ export default function SubscriptionPage() {
                 <Label>Price ($)</Label>
                 <Input
                   value={draft.price}
-                  onChange={(e) => setDraft({ ...draft, price: e.target.value })}
+                  onChange={(e) =>
+                    setDraft({ ...draft, price: e.target.value })
+                  }
                   placeholder="99.00"
                   inputMode="decimal"
                 />
@@ -473,7 +515,9 @@ export default function SubscriptionPage() {
                 <Label>Message Limit</Label>
                 <Input
                   value={draft.msg_limit}
-                  onChange={(e) => setDraft({ ...draft, msg_limit: e.target.value })}
+                  onChange={(e) =>
+                    setDraft({ ...draft, msg_limit: e.target.value })
+                  }
                   placeholder="500"
                   inputMode="numeric"
                 />
@@ -482,7 +526,9 @@ export default function SubscriptionPage() {
                 <Label>User Limit</Label>
                 <Input
                   value={draft.user_limit}
-                  onChange={(e) => setDraft({ ...draft, user_limit: e.target.value })}
+                  onChange={(e) =>
+                    setDraft({ ...draft, user_limit: e.target.value })
+                  }
                   placeholder="3"
                   inputMode="numeric"
                 />
@@ -491,7 +537,9 @@ export default function SubscriptionPage() {
                 <Label>Token Limit</Label>
                 <Input
                   value={draft.token_limit}
-                  onChange={(e) => setDraft({ ...draft, token_limit: e.target.value })}
+                  onChange={(e) =>
+                    setDraft({ ...draft, token_limit: e.target.value })
+                  }
                   placeholder="25000000"
                   inputMode="numeric"
                 />
@@ -500,14 +548,20 @@ export default function SubscriptionPage() {
                 <Label>Duration</Label>
                 <Input
                   value={draft.duration}
-                  onChange={(e) => setDraft({ ...draft, duration: e.target.value })}
+                  onChange={(e) =>
+                    setDraft({ ...draft, duration: e.target.value })
+                  }
                   placeholder="months"
                 />
               </div>
             </div>
 
             <div className="mt-6 flex items-center justify-end gap-3">
-              <Button variant="outline" onClick={closeEdit} disabled={savingPlan}>
+              <Button
+                variant="outline"
+                onClick={closeEdit}
+                disabled={savingPlan}
+              >
                 Cancel
               </Button>
               <Button
@@ -515,7 +569,9 @@ export default function SubscriptionPage() {
                 disabled={savingPlan}
                 className="bg-blue-600 text-white hover:bg-blue-500"
               >
-                {savingPlan ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {savingPlan ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : null}
                 Save
               </Button>
             </div>
@@ -525,4 +581,3 @@ export default function SubscriptionPage() {
     </div>
   );
 }
-
