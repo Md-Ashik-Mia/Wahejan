@@ -37,7 +37,6 @@
 //   );
 // }
 
-
 "use client";
 
 import { api } from "@/lib/http/client";
@@ -46,6 +45,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { FaEye, FaEyeSlash, FaGoogle } from "react-icons/fa";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 export default function SignupPage() {
   const [name, setName] = useState("");
@@ -63,24 +64,29 @@ export default function SignupPage() {
 
     // Password Validation
     if (password.length < 6) {
-        setError("Password must be at least 6 characters long.");
-        return;
+      setError("Password must be at least 6 characters long.");
+      toast.error("Password must be at least 6 characters long.");
+      return;
     }
     if (!/[A-Z]/.test(password)) {
-        setError("Password must contain at least one uppercase letter.");
-        return;
+      setError("Password must contain at least one uppercase letter.");
+      toast.error("Password must contain at least one uppercase letter.");
+      return;
     }
     if (!/[0-9]/.test(password)) {
-        setError("Password must contain at least one number.");
-        return;
+      setError("Password must contain at least one number.");
+      toast.error("Password must contain at least one number.");
+      return;
     }
     if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
-        setError("Password must contain at least one special character.");
-        return;
+      setError("Password must contain at least one special character.");
+      toast.error("Password must contain at least one special character.");
+      return;
     }
     if (password !== confirmPassword) {
-        setError("Passwords do not match.");
-        return;
+      setError("Passwords do not match.");
+      toast.error("Passwords do not match.");
+      return;
     }
 
     try {
@@ -88,18 +94,30 @@ export default function SignupPage() {
       if (res.status === 201 || res.status === 200) {
         // Save email for OTP step
         localStorage.setItem("signup_email", email);
+        toast.success("Signup successful. OTP sent.");
         router.push("/verify");
       } else {
-        alert(`Signup failed: ${res.status}`);
+        toast.error(`Signup failed: ${res.status}`);
       }
     } catch (err: any) {
       console.error("Signup error:", err.response?.data || err.message);
-      setError(err.response?.data?.message || "Signup failed");
+      const status = err?.response?.status;
+      const data = err?.response?.data;
+      const message =
+        data?.message ||
+        data?.detail ||
+        data?.error ||
+        err?.message ||
+        "Signup failed";
+      const display = status ? `${status}: ${message}` : message;
+      setError(message);
+      toast.error(display);
     }
   }
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-black text-white">
+      <ToastContainer position="top-right" autoClose={2500} theme="dark" />
       <h1 className="text-2xl font-bold mb-6">Create Account</h1>
       <form onSubmit={handleSignup} className="w-[350px] space-y-3">
         <input
@@ -141,7 +159,11 @@ export default function SignupPage() {
             onClick={() => setShowConfirmPassword(!showConfirmPassword)}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
           >
-            {showConfirmPassword ? <FaEye size={20} /> : <FaEyeSlash size={20} />}
+            {showConfirmPassword ? (
+              <FaEye size={20} />
+            ) : (
+              <FaEyeSlash size={20} />
+            )}
           </button>
         </div>
         {error && <p className="text-red-500 text-sm">{error}</p>}
@@ -154,7 +176,10 @@ export default function SignupPage() {
 
         <p className="text-center text-sm text-white/80">
           Already have an account?{" "}
-          <Link href="/login" className="underline underline-offset-4 hover:text-white">
+          <Link
+            href="/login"
+            className="underline underline-offset-4 hover:text-white"
+          >
             Log in
           </Link>
         </p>

@@ -1,4 +1,3 @@
-
 // "use client";
 
 // import { useState } from "react";
@@ -88,18 +87,6 @@
 //   );
 // }
 
-
-
-
-
-
-
-
-
-
-
-
-
 // app/(public)/login/page.tsx
 "use client";
 
@@ -108,6 +95,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { FaEye, FaEyeSlash, FaGoogle } from "react-icons/fa";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 type ClientSession = {
   user?: {
@@ -118,7 +107,45 @@ type ClientSession = {
   refreshToken?: string;
 } | null;
 
-function withTimeout<T>(promise: Promise<T>, ms: number, label = "Request"): Promise<T> {
+type AuthErrorPayload = {
+  status?: number;
+  status_code?: number;
+  code?: number;
+  message?: string;
+  detail?: string;
+  error?: string;
+};
+
+function formatAuthError(raw: unknown): string {
+  if (!raw) return "Login failed";
+  if (typeof raw === "string") {
+    if (raw === "CredentialsSignin") return "401: Invalid email or password";
+    try {
+      const parsed = JSON.parse(raw) as AuthErrorPayload;
+      const status = parsed.status ?? parsed.status_code ?? parsed.code;
+      const msg = parsed.message ?? parsed.detail ?? parsed.error;
+      if (status && msg) return `${status}: ${msg}`;
+      if (msg) return msg;
+    } catch {
+      return raw;
+    }
+    return raw;
+  }
+  if (raw && typeof raw === "object") {
+    const payload = raw as AuthErrorPayload;
+    const status = payload.status ?? payload.status_code ?? payload.code;
+    const msg = payload.message ?? payload.detail ?? payload.error;
+    if (status && msg) return `${status}: ${msg}`;
+    if (msg) return msg;
+  }
+  return "Login failed";
+}
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label = "Request",
+): Promise<T> {
   let timeoutId: number | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timeoutId = window.setTimeout(() => {
@@ -131,7 +158,10 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label = "Request"): Pro
   }) as Promise<T>;
 }
 
-async function waitForSessionReady(maxMs = 2000, intervalMs = 100): Promise<ClientSession> {
+async function waitForSessionReady(
+  maxMs = 2000,
+  intervalMs = 100,
+): Promise<ClientSession> {
   const start = Date.now();
   while (Date.now() - start < maxMs) {
     const session = (await getSession()) as ClientSession;
@@ -217,58 +247,63 @@ export default function LoginPage() {
     try {
       const res = await withTimeout(
         signIn("credentials", {
-        redirect: false, // we handle redirect manually
-        email,
-        password,
-        client_info: clientInfo ? JSON.stringify(clientInfo) : "",
+          redirect: false, // we handle redirect manually
+          email,
+          password,
+          client_info: clientInfo ? JSON.stringify(clientInfo) : "",
         }),
         25000,
-        "SIGNIN"
+        "SIGNIN",
       );
 
       if (res?.error) {
-        alert(
-          "Login failed. If this only happens on Vercel, check that NEXTAUTH_URL is your deployed https URL and NEXTAUTH_SECRET is set (no quotes). If your backend is an ngrok URL, make sure it is still active and reachable from Vercel."
-        );
+        toast.error(formatAuthError(res.error));
         setIsLoggingIn(false);
         return;
       }
 
       // 🔐 Wait for session to be ready (role + accessToken)
-      const session = await withTimeout(waitForSessionReady(), 25000, "SESSION");
+      const session = await withTimeout(
+        waitForSessionReady(),
+        25000,
+        "SESSION",
+      );
       const role = session?.user?.role;
       const accessToken = session?.accessToken;
 
       if (!role || !accessToken) {
-        alert(
-          "Login succeeded but session is missing (role/access token). On Vercel this usually means NEXTAUTH_SECRET or NEXTAUTH_URL is not set correctly. Check Vercel → Project → Settings → Environment Variables."
+        toast.error(
+          "Login succeeded but session is missing (role/access token). On Vercel this usually means NEXTAUTH_SECRET or NEXTAUTH_URL is not set correctly. Check Vercel → Project → Settings → Environment Variables.",
         );
         setIsLoggingIn(false);
         return;
       }
 
+      toast.success("Login successful");
       applySessionAndRedirect(session);
     } catch (err: unknown) {
       console.error(err);
-      if (err instanceof Error && (err.message === "SIGNIN_TIMEOUT" || err.message === "SESSION_TIMEOUT")) {
-        alert(
-          "Login is taking too long. On Vercel this usually means your backend URL is unreachable (ngrok sleeping/expired) or NEXTAUTH_URL is set to localhost. Fix NEXTAUTH_URL to your deployed https domain and ensure the backend is publicly reachable."
+      if (
+        err instanceof Error &&
+        (err.message === "SIGNIN_TIMEOUT" || err.message === "SESSION_TIMEOUT")
+      ) {
+        toast.error(
+          "Login is taking too long. On Vercel this usually means your backend URL is unreachable (ngrok sleeping/expired) or NEXTAUTH_URL is set to localhost. Fix NEXTAUTH_URL to your deployed https domain and ensure the backend is publicly reachable.",
         );
       } else if (err instanceof Error && err.message === "SESSION_NOT_READY") {
-        alert(
-          "Login session was not ready for routing. Please re-try after fixing NEXTAUTH_SECRET/NEXTAUTH_URL on Vercel."
+        toast.error(
+          "Login session was not ready for routing. Please re-try after fixing NEXTAUTH_SECRET/NEXTAUTH_URL on Vercel.",
         );
       } else {
-        alert("Login failed. Please try again.");
+        toast.error(formatAuthError(err));
       }
       setIsLoggingIn(false);
     }
   }
 
-
-
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-black text-white">
+      <ToastContainer position="top-right" autoClose={2500} theme="dark" />
       <h1 className="text-2xl font-bold mb-6">Welcome Back!</h1>
 
       <form onSubmit={handleLogin} className="w-[350px] space-y-3">
@@ -313,7 +348,10 @@ export default function LoginPage() {
 
         <p className="text-center text-sm text-white/80">
           Don&apos;t have an account?{" "}
-          <Link href="/signup" className="underline underline-offset-4 hover:text-white">
+          <Link
+            href="/signup"
+            className="underline underline-offset-4 hover:text-white"
+          >
             Sign up
           </Link>
         </p>

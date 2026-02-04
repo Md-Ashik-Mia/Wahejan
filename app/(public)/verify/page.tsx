@@ -3,6 +3,8 @@
 import { api } from "@/lib/http/client";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 export default function VerifyPage() {
   const [otp, setOtp] = useState("");
@@ -27,19 +29,20 @@ export default function VerifyPage() {
       });
       if (res.status === 200) {
         localStorage.removeItem("signup_email");
-        alert("Email verified. Please log in.");
+        toast.success("Email verified. Please log in.");
         router.push("/login");
       } else {
-        alert("Invalid code");
+        toast.error("Invalid code");
       }
     } catch (err: any) {
       console.error("Verify error:", err.response?.data || err.message);
-      alert("Verification failed");
+      toast.error("Verification failed");
     }
   }
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-black text-white">
+      <ToastContainer position="top-right" autoClose={2500} theme="dark" />
       <h1 className="text-2xl font-bold mb-6">Verify Your Account</h1>
       <form onSubmit={handleVerify} className="w-[300px] space-y-3">
         <p className="text-sm text-gray-400">

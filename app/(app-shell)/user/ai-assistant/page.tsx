@@ -136,16 +136,19 @@
 
 // export default AIAssistantDashboard;
 
-
-
-
-
-
 "use client";
 
 import { userapi } from "@/lib/http/client";
 import axios from "axios";
-import React, { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 type OpeningSlot = {
   id: string | number;
@@ -339,7 +342,8 @@ function getApiErrorMessage(error: unknown, fallback: string): string {
       // Handle simple key-value errors or validation errors
       const firstValue = Object.values(data)[0];
       if (typeof firstValue === "string") return firstValue;
-      if (Array.isArray(firstValue) && typeof firstValue[0] === "string") return firstValue[0];
+      if (Array.isArray(firstValue) && typeof firstValue[0] === "string")
+        return firstValue[0];
 
       try {
         const text = JSON.stringify(data);
@@ -349,7 +353,8 @@ function getApiErrorMessage(error: unknown, fallback: string): string {
       }
     }
 
-    if (typeof error.message === "string" && error.message.trim()) return error.message;
+    if (typeof error.message === "string" && error.message.trim())
+      return error.message;
     return fallback;
   }
   if (error instanceof Error && error.message.trim()) return error.message;
@@ -424,20 +429,26 @@ function withTrailingSlash(path: string) {
 
 async function requestWithSlashFallback<T>(
   fn: (endpoint: string) => Promise<T>,
-  endpoint: string
+  endpoint: string,
 ): Promise<T> {
   try {
     return await fn(endpoint);
   } catch (e: unknown) {
     if (axios.isAxiosError(e) && e.response?.status === 404) {
-      const alt = endpoint.endsWith("/") ? endpoint.slice(0, -1) : withTrailingSlash(endpoint);
+      const alt = endpoint.endsWith("/")
+        ? endpoint.slice(0, -1)
+        : withTrailingSlash(endpoint);
       return await fn(alt);
     }
     throw e;
   }
 }
 
-function buildOpeningHourCreatePayload(form: { day: string; start: string; end: string }) {
+function buildOpeningHourCreatePayload(form: {
+  day: string;
+  start: string;
+  end: string;
+}) {
   // Matches Postman CREATE: { days: ['fri'], start: '09:00', end: '18:00' }
   const dayCode = toDayCode(form.day);
   return {
@@ -447,7 +458,11 @@ function buildOpeningHourCreatePayload(form: { day: string; start: string; end: 
   };
 }
 
-function buildOpeningHourUpdatePayload(form: { day: string; start: string; end: string }) {
+function buildOpeningHourUpdatePayload(form: {
+  day: string;
+  start: string;
+  end: string;
+}) {
   // Matches Postman UPDATE: { day: 'fri', start: '10:00', end: '18:00' }
   const dayCode = toDayCode(form.day);
   return {
@@ -488,15 +503,20 @@ function normalizeService(raw: unknown): Service {
   const id = typeof r.id === "number" ? r.id : 0;
   const name = typeof r.name === "string" ? r.name : "";
   const description = typeof r.description === "string" ? r.description : "";
-  const price = typeof r.price === "string" ? r.price : r.price != null ? String(r.price) : "";
+  const price =
+    typeof r.price === "string"
+      ? r.price
+      : r.price != null
+        ? String(r.price)
+        : "";
   const start_time = normalizeTimeHHmm(r.start_time);
   const end_time = normalizeTimeHHmm(r.end_time);
   const duration =
     typeof r.duration === "number"
       ? r.duration
       : typeof r.duration_minutes === "number"
-      ? r.duration_minutes
-      : null;
+        ? r.duration_minutes
+        : null;
   return {
     id,
     name,
@@ -553,7 +573,10 @@ const AIAssistantDashboard: React.FC = () => {
     setCompanyLoading(true);
     setCompanyError(null);
     try {
-      const res = await requestWithSlashFallback((ep) => userapi.get(ep), COMPANY_ENDPOINT);
+      const res = await requestWithSlashFallback(
+        (ep) => userapi.get(ep),
+        COMPANY_ENDPOINT,
+      );
       const normalized = normalizeCompany(res?.data);
       setCompany(normalized);
 
@@ -602,12 +625,13 @@ const AIAssistantDashboard: React.FC = () => {
         website: emptyToNull(companyForm.website),
         summary: current?.summary ?? null,
         greeting: emptyToNull(companyForm.greeting),
-        concurrent_booking_limit: Number(companyForm.concurrent_booking_limit) || 1,
+        concurrent_booking_limit:
+          Number(companyForm.concurrent_booking_limit) || 1,
       };
 
       const res = await requestWithSlashFallback(
         (ep) => userapi.patch(ep, payload),
-        COMPANY_ENDPOINT
+        COMPANY_ENDPOINT,
       );
 
       const normalized = normalizeCompany(res?.data);
@@ -623,8 +647,11 @@ const AIAssistantDashboard: React.FC = () => {
         greeting: normalized.greeting ?? "",
         concurrent_booking_limit: normalized.concurrent_booking_limit ?? 1,
       });
+      toast.success("Company details updated");
     } catch (e: unknown) {
-      setCompanyError(getApiErrorMessage(e, "Failed to update company details"));
+      const message = getApiErrorMessage(e, "Failed to update company details");
+      setCompanyError(message);
+      toast.error(message);
     } finally {
       setCompanyLoading(false);
     }
@@ -654,19 +681,19 @@ const AIAssistantDashboard: React.FC = () => {
     try {
       const res = await requestWithSlashFallback(
         (ep) => userapi.get(ep),
-        OPENING_HOURS_ENDPOINT
+        OPENING_HOURS_ENDPOINT,
       );
       const payload = res?.data;
 
       const list = Array.isArray(payload)
         ? payload
         : Array.isArray(payload?.results)
-        ? payload.results
-        : Array.isArray(payload?.data)
-        ? payload.data
-        : Array.isArray(payload?.list)
-        ? payload.list
-        : [];
+          ? payload.results
+          : Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.list)
+              ? payload.list
+              : [];
 
       const normalized = list
         .map(normalizeOpeningSlot)
@@ -692,18 +719,19 @@ const AIAssistantDashboard: React.FC = () => {
     setOpeningLoading(true);
     setOpeningError(null);
     try {
+      const isUpdate = openingForm.id !== null;
       if (openingForm.id === null) {
         // create
         await requestWithSlashFallback(
           (ep) => userapi.post(ep, buildOpeningHourCreatePayload(openingForm)),
-          OPENING_HOURS_ENDPOINT
+          OPENING_HOURS_ENDPOINT,
         );
       } else {
         // update: backend uses detail route `/opening-hours/{id}/`
         const detail = openingHourDetailEndpoint(openingForm.id);
         await requestWithSlashFallback(
           (ep) => patchOrPut(ep, buildOpeningHourUpdatePayload(openingForm)),
-          detail
+          detail,
         );
       }
 
@@ -714,8 +742,11 @@ const AIAssistantDashboard: React.FC = () => {
         end: "17:00",
       });
       await fetchOpeningHours();
+      toast.success(isUpdate ? "Opening hour updated" : "Opening hour added");
     } catch (e: unknown) {
-      setOpeningError(getApiErrorMessage(e, "Failed to save opening hour"));
+      const message = getApiErrorMessage(e, "Failed to save opening hour");
+      setOpeningError(message);
+      toast.error(message);
     } finally {
       setOpeningLoading(false);
     }
@@ -747,8 +778,11 @@ const AIAssistantDashboard: React.FC = () => {
         });
       }
       await fetchOpeningHours();
+      toast.success("Opening hour deleted");
     } catch (e: unknown) {
-      setOpeningError(getApiErrorMessage(e, "Failed to delete opening hour"));
+      const message = getApiErrorMessage(e, "Failed to delete opening hour");
+      setOpeningError(message);
+      toast.error(message);
     } finally {
       setOpeningLoading(false);
     }
@@ -783,18 +817,23 @@ const AIAssistantDashboard: React.FC = () => {
     setServicesLoading(true);
     setServicesError(null);
     try {
-      const res = await requestWithSlashFallback((ep) => userapi.get(ep), SERVICE_ENDPOINT);
+      const res = await requestWithSlashFallback(
+        (ep) => userapi.get(ep),
+        SERVICE_ENDPOINT,
+      );
       const payload = res?.data;
       const list = Array.isArray(payload)
         ? payload
         : Array.isArray(payload?.results)
-        ? payload.results
-        : Array.isArray(payload?.data)
-        ? payload.data
-        : Array.isArray(payload?.list)
-        ? payload.list
-        : [];
-      setServices(list.map(normalizeService).filter((s: Service) => s.id && s.name));
+          ? payload.results
+          : Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.list)
+              ? payload.list
+              : [];
+      setServices(
+        list.map(normalizeService).filter((s: Service) => s.id && s.name),
+      );
     } catch (e: unknown) {
       setServicesError(getApiErrorMessage(e, "Failed to load services"));
     } finally {
@@ -812,7 +851,9 @@ const AIAssistantDashboard: React.FC = () => {
 
     const parsedPrice = parsePriceToNumber(serviceForm.price);
     if (parsedPrice === null) {
-      setServicesError("Price must be a valid number");
+      const message = "Price must be a valid number";
+      setServicesError(message);
+      toast.error(message);
       return;
     }
 
@@ -820,6 +861,7 @@ const AIAssistantDashboard: React.FC = () => {
     setServicesError(null);
 
     try {
+      const isUpdate = serviceForm.id !== null;
       if (serviceForm.id === null) {
         // create
         const duration = serviceForm.duration.trim();
@@ -833,7 +875,7 @@ const AIAssistantDashboard: React.FC = () => {
               start_time: normalizeTimeHHmmss(serviceForm.start_time),
               end_time: normalizeTimeHHmmss(serviceForm.end_time),
             }),
-          SERVICE_ENDPOINT
+          SERVICE_ENDPOINT,
         );
       } else {
         // update: PATCH /auth/company/service/{id}/
@@ -846,10 +888,14 @@ const AIAssistantDashboard: React.FC = () => {
               description: serviceForm.description,
               price: parsedPrice,
               ...(duration ? { duration: Number(duration) } : {}),
-              ...(serviceForm.start_time ? { start_time: normalizeTimeHHmmss(serviceForm.start_time) } : {}),
-              ...(serviceForm.end_time ? { end_time: normalizeTimeHHmmss(serviceForm.end_time) } : {}),
+              ...(serviceForm.start_time
+                ? { start_time: normalizeTimeHHmmss(serviceForm.start_time) }
+                : {}),
+              ...(serviceForm.end_time
+                ? { end_time: normalizeTimeHHmmss(serviceForm.end_time) }
+                : {}),
             }),
-          detail
+          detail,
         );
       }
 
@@ -864,8 +910,11 @@ const AIAssistantDashboard: React.FC = () => {
       });
 
       await fetchServices();
+      toast.success(isUpdate ? "Service updated" : "Service added");
     } catch (e: unknown) {
-      setServicesError(getApiErrorMessage(e, "Failed to save service"));
+      const message = getApiErrorMessage(e, "Failed to save service");
+      setServicesError(message);
+      toast.error(message);
     } finally {
       setServicesLoading(false);
     }
@@ -879,7 +928,8 @@ const AIAssistantDashboard: React.FC = () => {
       price: service.price,
       start_time: service.start_time,
       end_time: service.end_time,
-      duration: typeof service.duration === "number" ? String(service.duration) : "",
+      duration:
+        typeof service.duration === "number" ? String(service.duration) : "",
     });
   };
 
@@ -903,8 +953,11 @@ const AIAssistantDashboard: React.FC = () => {
       }
 
       await fetchServices();
+      toast.success("Service deleted");
     } catch (e: unknown) {
-      setServicesError(getApiErrorMessage(e, "Failed to delete service"));
+      const message = getApiErrorMessage(e, "Failed to delete service");
+      setServicesError(message);
+      toast.error(message);
     } finally {
       setServicesLoading(false);
     }
@@ -925,7 +978,7 @@ const AIAssistantDashboard: React.FC = () => {
     try {
       const res = await requestWithSlashFallback(
         (ep) => userapi.patch(ep, { tone: nextTone }),
-        COMPANY_ENDPOINT
+        COMPANY_ENDPOINT,
       );
       const normalized = normalizeCompany(res?.data);
       setCompany(normalized);
@@ -946,8 +999,12 @@ const AIAssistantDashboard: React.FC = () => {
 
   const [trainingFiles, setTrainingFiles] = useState<TrainingFile[]>([]);
   const [trainingFilesLoading, setTrainingFilesLoading] = useState(false);
-  const [trainingFilesError, setTrainingFilesError] = useState<string | null>(null);
-  const [trainingFileDeletingId, setTrainingFileDeletingId] = useState<number | null>(null);
+  const [trainingFilesError, setTrainingFilesError] = useState<string | null>(
+    null,
+  );
+  const [trainingFileDeletingId, setTrainingFileDeletingId] = useState<
+    number | null
+  >(null);
 
   const fetchTrainingFiles = useCallback(async () => {
     setTrainingFilesLoading(true);
@@ -955,18 +1012,18 @@ const AIAssistantDashboard: React.FC = () => {
     try {
       const res = await requestWithSlashFallback(
         (ep) => userapi.get(ep),
-        AI_TRAINING_FILES_ENDPOINT
+        AI_TRAINING_FILES_ENDPOINT,
       );
       const payload = res?.data;
       const list = Array.isArray(payload)
         ? payload
         : Array.isArray(payload?.results)
-        ? payload.results
-        : Array.isArray(payload?.data)
-        ? payload.data
-        : Array.isArray(payload?.list)
-        ? payload.list
-        : [];
+          ? payload.results
+          : Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.list)
+              ? payload.list
+              : [];
 
       const normalized = list
         .map(normalizeTrainingFile)
@@ -979,7 +1036,9 @@ const AIAssistantDashboard: React.FC = () => {
 
       setTrainingFiles(normalized);
     } catch (e: unknown) {
-      setTrainingFilesError(getApiErrorMessage(e, "Failed to load training files"));
+      setTrainingFilesError(
+        getApiErrorMessage(e, "Failed to load training files"),
+      );
     } finally {
       setTrainingFilesLoading(false);
     }
@@ -1011,13 +1070,16 @@ const AIAssistantDashboard: React.FC = () => {
               "Content-Type": "multipart/form-data",
             },
           }),
-        AI_TRAINING_FILES_ENDPOINT
+        AI_TRAINING_FILES_ENDPOINT,
       );
 
       if (fileInputRef.current) fileInputRef.current.value = "";
       await fetchTrainingFiles();
+      toast.success("Files uploaded successfully");
     } catch (e: unknown) {
-      setTrainingError(getApiErrorMessage(e, "Failed to upload training files"));
+      const message = getApiErrorMessage(e, "Failed to upload training files");
+      setTrainingError(message);
+      toast.error(message);
     } finally {
       setTrainingUploading(false);
     }
@@ -1030,11 +1092,14 @@ const AIAssistantDashboard: React.FC = () => {
       // Backend expects DELETE /ai-training-files/ with JSON: { file_id: <id> }
       await requestWithSlashFallback(
         (ep) => userapi.delete(ep, { data: { file_id: id } }),
-        AI_TRAINING_FILES_ENDPOINT
+        AI_TRAINING_FILES_ENDPOINT,
       );
       await fetchTrainingFiles();
+      toast.success("File deleted");
     } catch (e: unknown) {
-      setTrainingFilesError(getApiErrorMessage(e, "Failed to delete training file"));
+      const message = getApiErrorMessage(e, "Failed to delete training file");
+      setTrainingFilesError(message);
+      toast.error(message);
     } finally {
       setTrainingFileDeletingId(null);
     }
@@ -1049,7 +1114,9 @@ const AIAssistantDashboard: React.FC = () => {
 
   const handleDropFiles = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    const list = Array.from(e.dataTransfer.files ?? []).filter((f) => f.size > 0);
+    const list = Array.from(e.dataTransfer.files ?? []).filter(
+      (f) => f.size > 0,
+    );
     if (!list.length) return;
     void uploadTrainingFiles(list);
   };
@@ -1073,18 +1140,18 @@ const AIAssistantDashboard: React.FC = () => {
     try {
       const res = await requestWithSlashFallback(
         (ep) => userapi.get(ep),
-        KNOWLEDGE_BASE_ENDPOINT
+        KNOWLEDGE_BASE_ENDPOINT,
       );
       const payload = res?.data;
       const list = Array.isArray(payload)
         ? payload
         : Array.isArray(payload?.results)
-        ? payload.results
-        : Array.isArray(payload?.data)
-        ? payload.data
-        : Array.isArray(payload?.list)
-        ? payload.list
-        : [];
+          ? payload.results
+          : Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.list)
+              ? payload.list
+              : [];
 
       const normalized = list
         .map(normalizeKnowledgeTopic)
@@ -1139,24 +1206,36 @@ const AIAssistantDashboard: React.FC = () => {
     setTopicSaving(true);
     setTopicsError(null);
     try {
+      const isUpdate = kbForm.id !== null;
       if (kbForm.id === null) {
         await requestWithSlashFallback(
-          (ep) => userapi.post(ep, { name: kbForm.title, details: kbForm.description }),
-          KNOWLEDGE_BASE_ENDPOINT
+          (ep) =>
+            userapi.post(ep, {
+              name: kbForm.title,
+              details: kbForm.description,
+            }),
+          KNOWLEDGE_BASE_ENDPOINT,
         );
       } else {
         const detail = knowledgeBaseDetailEndpoint(kbForm.id);
         await requestWithSlashFallback(
-          (ep) => userapi.patch(ep, { name: kbForm.title, details: kbForm.description }),
-          detail
+          (ep) =>
+            userapi.patch(ep, {
+              name: kbForm.title,
+              details: kbForm.description,
+            }),
+          detail,
         );
       }
 
       setIsKbModalOpen(false);
       setKbForm({ id: null, title: "", description: "" });
       await fetchTopics();
+      toast.success(isUpdate ? "Topic updated" : "Topic added");
     } catch (e: unknown) {
-      setTopicsError(getApiErrorMessage(e, "Failed to save topic"));
+      const message = getApiErrorMessage(e, "Failed to save topic");
+      setTopicsError(message);
+      toast.error(message);
     } finally {
       setTopicSaving(false);
     }
@@ -1172,8 +1251,11 @@ const AIAssistantDashboard: React.FC = () => {
         setKbForm({ id: null, title: "", description: "" });
       }
       await fetchTopics();
+      toast.success("Topic deleted");
     } catch (e: unknown) {
-      setTopicsError(getApiErrorMessage(e, "Failed to delete topic"));
+      const message = getApiErrorMessage(e, "Failed to delete topic");
+      setTopicsError(message);
+      toast.error(message);
     } finally {
       setTopicDeletingId(null);
     }
@@ -1183,6 +1265,7 @@ const AIAssistantDashboard: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-black text-white p-6 space-y-8">
+      <ToastContainer position="top-right" autoClose={2500} theme="dark" />
       {/* Company Info & Opening Hours & Location */}
       <section className="bg-[#272727] rounded-2xl p-6 shadow-lg space-y-6">
         <h2 className="text-xl font-semibold">AI Assistant</h2>
@@ -1193,7 +1276,9 @@ const AIAssistantDashboard: React.FC = () => {
             className="bg-gray-900 p-3 rounded-lg"
             placeholder="Company name here"
             value={companyForm.name}
-            onChange={(e) => setCompanyForm((f) => ({ ...f, name: e.target.value }))}
+            onChange={(e) =>
+              setCompanyForm((f) => ({ ...f, name: e.target.value }))
+            }
           />
           <select
             className="bg-gray-900 p-3 rounded-lg"
@@ -1203,9 +1288,14 @@ const AIAssistantDashboard: React.FC = () => {
             }
           >
             {/* Ensure current value shows even if not in the list */}
-            {companyForm.industry && !["Technology", "Education", "Health"].includes(companyForm.industry) && (
-              <option value={companyForm.industry}>{companyForm.industry}</option>
-            )}
+            {companyForm.industry &&
+              !["Technology", "Education", "Health"].includes(
+                companyForm.industry,
+              ) && (
+                <option value={companyForm.industry}>
+                  {companyForm.industry}
+                </option>
+              )}
             <option>Technology</option>
             <option>Education</option>
             <option>Health</option>
@@ -1214,31 +1304,42 @@ const AIAssistantDashboard: React.FC = () => {
             className="col-span-1 md:col-span-2 bg-gray-900 p-3 rounded-lg"
             placeholder="What does your company do?"
             value={companyForm.description}
-            onChange={(e) => setCompanyForm((f) => ({ ...f, description: e.target.value }))}
+            onChange={(e) =>
+              setCompanyForm((f) => ({ ...f, description: e.target.value }))
+            }
           />
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-semibold text-gray-300 ml-1">AI Greeting</label>
+            <label className="text-sm font-semibold text-gray-300 ml-1">
+              AI Greeting
+            </label>
             <input
               className="bg-gray-900 p-3 rounded-lg"
               placeholder="e.g. Assalamu Alaikum"
               value={companyForm.greeting}
-              onChange={(e) => setCompanyForm((f) => ({ ...f, greeting: e.target.value }))}
+              onChange={(e) =>
+                setCompanyForm((f) => ({ ...f, greeting: e.target.value }))
+              }
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-semibold text-gray-300 ml-1">Concurrent Booking Limit</label>
+            <label className="text-sm font-semibold text-gray-300 ml-1">
+              Concurrent Booking Limit
+            </label>
             <input
               type="number"
               min={1}
               className="bg-gray-900 p-3 rounded-lg"
               placeholder="1"
               value={companyForm.concurrent_booking_limit}
-              onChange={(e) => setCompanyForm((f) => ({ ...f, concurrent_booking_limit: Number(e.target.value) }))}
+              onChange={(e) =>
+                setCompanyForm((f) => ({
+                  ...f,
+                  concurrent_booking_limit: Number(e.target.value),
+                }))
+              }
             />
           </div>
         </div>
-
-
 
         {/* Location */}
         <div>
@@ -1248,19 +1349,25 @@ const AIAssistantDashboard: React.FC = () => {
               className="bg-gray-900 p-3 rounded-lg"
               placeholder="Address"
               value={companyForm.address}
-              onChange={(e) => setCompanyForm((f) => ({ ...f, address: e.target.value }))}
+              onChange={(e) =>
+                setCompanyForm((f) => ({ ...f, address: e.target.value }))
+              }
             />
             <input
               className="bg-gray-900 p-3 rounded-lg"
               placeholder="City"
               value={companyForm.city}
-              onChange={(e) => setCompanyForm((f) => ({ ...f, city: e.target.value }))}
+              onChange={(e) =>
+                setCompanyForm((f) => ({ ...f, city: e.target.value }))
+              }
             />
             <input
               className="bg-gray-900 p-3 rounded-lg"
               placeholder="Country"
               value={companyForm.country}
-              onChange={(e) => setCompanyForm((f) => ({ ...f, country: e.target.value }))}
+              onChange={(e) =>
+                setCompanyForm((f) => ({ ...f, country: e.target.value }))
+              }
             />
           </div>
 
@@ -1271,12 +1378,16 @@ const AIAssistantDashboard: React.FC = () => {
               className="bg-gray-900 p-3 rounded-lg w-full"
               placeholder="https://your-company.com"
               value={companyForm.website}
-              onChange={(e) => setCompanyForm((f) => ({ ...f, website: e.target.value }))}
+              onChange={(e) =>
+                setCompanyForm((f) => ({ ...f, website: e.target.value }))
+              }
             />
           </div>
         </div>
 
-        {companyError && <div className="text-sm text-red-400">{companyError}</div>}
+        {companyError && (
+          <div className="text-sm text-red-400">{companyError}</div>
+        )}
 
         <button
           type="button"
@@ -1287,13 +1398,13 @@ const AIAssistantDashboard: React.FC = () => {
           {companyLoading ? "Updating..." : "Update"}
         </button>
 
-          {/* Opening Hours list */}
+        {/* Opening Hours list */}
         <div>
           <h3 className="font-semibold mb-2">Opening Hours</h3>
 
-            {openingError && (
-              <div className="mb-3 text-sm text-red-400">{openingError}</div>
-            )}
+          {openingError && (
+            <div className="mb-3 text-sm text-red-400">{openingError}</div>
+          )}
 
           <div className="flex flex-wrap gap-3 mb-4">
             {openingSlots.map((slot) => (
@@ -1313,7 +1424,7 @@ const AIAssistantDashboard: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleOpeningEdit(slot)}
-                      disabled={openingLoading}
+                    disabled={openingLoading}
                     className="text-xs bg-blue-600 px-3 py-1 rounded-lg"
                   >
                     Update
@@ -1321,7 +1432,7 @@ const AIAssistantDashboard: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleOpeningDelete(slot.id)}
-                      disabled={openingLoading}
+                    disabled={openingLoading}
                     className="text-xs bg-red-600 px-3 py-1 rounded-lg"
                   >
                     Delete
@@ -1330,15 +1441,15 @@ const AIAssistantDashboard: React.FC = () => {
               </div>
             ))}
 
-              {!openingLoading && openingSlots.length === 0 && (
+            {!openingLoading && openingSlots.length === 0 && (
               <p className="text-sm text-gray-400">
                 No opening hours added yet.
               </p>
             )}
 
-              {openingLoading && (
-                <p className="text-sm text-gray-400">Loading...</p>
-              )}
+            {openingLoading && (
+              <p className="text-sm text-gray-400">Loading...</p>
+            )}
           </div>
 
           {/* Opening hours form */}
@@ -1386,8 +1497,8 @@ const AIAssistantDashboard: React.FC = () => {
               {openingLoading
                 ? "Saving..."
                 : openingForm.id === null
-                ? "Add Slot"
-                : "Save Changes"}
+                  ? "Add Slot"
+                  : "Save Changes"}
             </button>
           </form>
         </div>
@@ -1437,7 +1548,9 @@ const AIAssistantDashboard: React.FC = () => {
                   <td className="py-2">{service.start_time}</td>
                   <td className="py-2">{service.end_time}</td>
                   <td className="py-2">
-                    {typeof service.duration === "number" ? service.duration : "—"}
+                    {typeof service.duration === "number"
+                      ? service.duration
+                      : "—"}
                   </td>
                   <td className="py-2">
                     <div className="flex gap-2">
@@ -1542,8 +1655,8 @@ const AIAssistantDashboard: React.FC = () => {
             {servicesLoading
               ? "Saving..."
               : serviceForm.id === null
-              ? "+ Add"
-              : "Save Changes"}
+                ? "+ Add"
+                : "Save Changes"}
           </button>
         </form>
       </section>
@@ -1562,8 +1675,6 @@ const AIAssistantDashboard: React.FC = () => {
             onChange={(e) => handleTonePresetChange(e.target.value)}
             disabled={toneSaving || companyLoading}
           >
-
-
             {/* '',
   '',
   '',
@@ -1615,7 +1726,9 @@ const AIAssistantDashboard: React.FC = () => {
 
           <div className="mt-4">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-gray-200">Uploaded files</p>
+              <p className="text-sm font-semibold text-gray-200">
+                Uploaded files
+              </p>
               <p className="text-xs text-gray-400">{trainingFiles.length}</p>
             </div>
 
@@ -1627,14 +1740,18 @@ const AIAssistantDashboard: React.FC = () => {
               {trainingFilesLoading ? (
                 <p className="text-sm text-gray-400 p-4">Loading...</p>
               ) : trainingFiles.length === 0 ? (
-                <p className="text-sm text-gray-400 p-4">No files uploaded yet.</p>
+                <p className="text-sm text-gray-400 p-4">
+                  No files uploaded yet.
+                </p>
               ) : (
                 <div className="max-h-56 overflow-y-auto">
                   <table className="w-full text-left text-sm">
                     <thead className="sticky top-0 bg-gray-900">
                       <tr className="text-gray-400 border-b border-gray-800">
                         <th className="py-2 px-3">File</th>
-                        <th className="py-2 px-3 whitespace-nowrap">Uploaded</th>
+                        <th className="py-2 px-3 whitespace-nowrap">
+                          Uploaded
+                        </th>
                         <th className="py-2 px-3 text-right">Actions</th>
                       </tr>
                     </thead>
@@ -1642,7 +1759,10 @@ const AIAssistantDashboard: React.FC = () => {
                       {trainingFiles.map((tf) => (
                         <tr key={tf.id} className="border-b border-gray-800">
                           <td className="py-2 px-3">
-                            <p className="text-gray-200 truncate" title={tf.file}>
+                            <p
+                              className="text-gray-200 truncate"
+                              title={tf.file}
+                            >
                               {filenameFromPath(tf.file)}
                             </p>
                           </td>
@@ -1677,7 +1797,10 @@ const AIAssistantDashboard: React.FC = () => {
       </section>
 
       {/* Knowledge Base */}
-      <section id="knowledge-base" className="bg-[#272727] rounded-2xl p-6 shadow-lg space-y-4">
+      <section
+        id="knowledge-base"
+        className="bg-[#272727] rounded-2xl p-6 shadow-lg space-y-4"
+      >
         <div className="flex items-center justify-between">
           <h3 className="font-semibold mb-2">AI Assistant Knowledge Base</h3>
           <button
@@ -1689,9 +1812,7 @@ const AIAssistantDashboard: React.FC = () => {
           </button>
         </div>
 
-        {topicsError && (
-          <p className="text-sm text-red-400">{topicsError}</p>
-        )}
+        {topicsError && <p className="text-sm text-red-400">{topicsError}</p>}
 
         <div className="space-y-3">
           {topicsLoading ? (
@@ -1704,7 +1825,9 @@ const AIAssistantDashboard: React.FC = () => {
               >
                 <div>
                   <h4 className="font-semibold">{topic.title}</h4>
-                  <p className="text-gray-400 text-sm mt-1">{topic.description}</p>
+                  <p className="text-gray-400 text-sm mt-1">
+                    {topic.description}
+                  </p>
                   <p className="text-gray-500 text-xs mt-1">
                     Added:{" "}
                     {topic.createdAt
@@ -1789,8 +1912,8 @@ const AIAssistantDashboard: React.FC = () => {
                   {topicSaving
                     ? "Saving..."
                     : kbForm.id === null
-                    ? "Add Topic"
-                    : "Save Changes"}
+                      ? "Add Topic"
+                      : "Save Changes"}
                 </button>
               </div>
             </form>
