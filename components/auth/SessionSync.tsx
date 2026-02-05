@@ -7,6 +7,13 @@ export function SessionSync() {
   const { data: session } = useSession();
 
   useEffect(() => {
+    if ((session as any)?.error === "RefreshAccessTokenError") {
+        if (typeof window !== "undefined") {
+            window.location.href = "/api/auth/signout?callbackUrl=/login";
+        }
+        return;
+    }
+
     if (session?.accessToken) {
       if (typeof window !== "undefined") {
         localStorage.setItem("access_token", session.accessToken as string);
@@ -14,10 +21,6 @@ export function SessionSync() {
             localStorage.setItem("refresh_token", session.refreshToken as string);
         }
       }
-    } else {
-        // Option 1: Do nothing (preserve existing token?)
-        // Option 2: Clear token if session is invalid?
-        // Let's stick to setting it if present. Clearing might be aggressive during loading states.
     }
   }, [session]);
 

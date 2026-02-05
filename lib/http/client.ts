@@ -177,44 +177,98 @@ export const adminApi = axios.create({
 userApi.interceptors.request.use(attachAuth);
 adminApi.interceptors.request.use(attachAuth);
 
-// RESPONSE interceptor for user (redirect to login on 401)
+// RESPONSE interceptor for user (refreshes token on 401 if possible)
+let isRefreshing = false;
+let failedQueue: any[] = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
+async function handle401(err: any, instance: any) {
+  const originalRequest = err.config;
+
+  if (err.response?.status === 401 && !originalRequest._retry) {
+    if (isRefreshing) {
+      return new Promise((resolve, reject) => {
+        failedQueue.push({ resolve, reject });
+      })
+        .then((token) => {
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+          return instance(originalRequest);
+        })
+        .catch((err) => Promise.reject(err));
+    }
+
+    originalRequest._retry = true;
+    isRefreshing = true;
+
+    try {
+      const accessToken = localStorage.getItem("access_token");
+      const refreshToken = localStorage.getItem("refresh_token");
+
+      if (!accessToken || !refreshToken) {
+        throw new Error("No tokens available");
+      }
+
+      // Use the validation endpoint provided by the backend
+      // Note: We use the base axios 'api' instance to avoid interceptor loops
+      const { data } = await api.post("/validate-token/", {
+        access: accessToken,
+        refresh: refreshToken,
+      });
+
+      if (data.valid && data.access) {
+        const newAccess = data.access;
+        const newRefresh = data.refresh;
+
+        localStorage.setItem("access_token", newAccess);
+        if (newRefresh) localStorage.setItem("refresh_token", newRefresh);
+
+        // Update headers and retry original request
+        originalRequest.headers.Authorization = `Bearer ${newAccess}`;
+        processQueue(null, newAccess);
+        return instance(originalRequest);
+      } else {
+        throw new Error("Token validation failed");
+      }
+    } catch (refreshError) {
+      processQueue(refreshError, null);
+
+      // Clear tokens and redirect to signout/login
+      try {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+      } catch { }
+
+      if (typeof window !== "undefined") {
+        const currentPath = window.location.pathname;
+        if (!currentPath.startsWith("/api/auth/signout") && !currentPath.includes("/login")) {
+          window.location.href = "/api/auth/signout?callbackUrl=/login";
+        }
+      }
+      return Promise.reject(refreshError);
+    } finally {
+      isRefreshing = false;
+    }
+  }
+
+  return Promise.reject(err);
+}
+
 userApi.interceptors.response.use(
   (r) => r,
-  (err) => {
-    if (err.response?.status === 401 && typeof window !== "undefined") {
-      try {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
-      } catch {
-        // ignore storage errors
-      }
-
-      const currentPath = window.location.pathname;
-      if (!currentPath.startsWith("/api/auth/signout")) {
-        window.location.href = "/api/auth/signout?callbackUrl=/login";
-      }
-    }
-    return Promise.reject(err);
-  },
+  (err) => handle401(err, userApi)
 );
 
-// You can re-enable this later if you want auto redirects for admin errors
 adminApi.interceptors.response.use(
   (r) => r,
-  (err) => {
-    if (err.response?.status === 401 && typeof window !== "undefined") {
-      try {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
-      } catch {
-        // ignore storage errors
-      }
-
-      const currentPath = window.location.pathname;
-      if (!currentPath.startsWith("/api/auth/signout")) {
-        window.location.href = "/api/auth/signout?callbackUrl=/login";
-      }
-    }
-    return Promise.reject(err);
-  },
+  (err) => handle401(err, adminApi)
 );

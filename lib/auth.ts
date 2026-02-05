@@ -313,7 +313,7 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     // Called whenever JWT is created/updated
     async jwt({ token, user, account }) {
-      // First login with credentials
+      // 1) Initial login (Credentials or Google exchange)
       if (user) {
         const u = user as unknown as Partial<AppUser>;
         token.role = normalizeRole(u.role);
@@ -321,50 +321,68 @@ export const authOptions: NextAuthOptions = {
         token.accessToken = u.accessToken;
         token.refreshToken = u.refreshToken;
         token.image = u.image;
+        token.lastVerified = Date.now();
       }
 
-      // Keep role normalized even on subsequent calls.
-      if (typeof token.role === "string") {
-        token.role = normalizeRole(token.role);
-      }
-
-      // Google OAuth: exchange Google access_token for backend access/refresh tokens.
+      // 2) Google OAuth: first-time exchange
       if (account?.provider === "google" && account.access_token) {
         try {
           const { data } = await api.post(
             "/auth/google/login/",
-            {
-              access_token: account.access_token,
-            },
-            {
-              headers: {
-                "ngrok-skip-browser-warning": "true",
-              },
-            }
+            { access_token: account.access_token },
+            { headers: { "ngrok-skip-browser-warning": "true" } }
           );
 
           const backendUser = (data as any)?.user;
           const access = (data as any)?.access ?? (data as any)?.access_token;
           const refresh = (data as any)?.refresh ?? (data as any)?.refresh_token;
 
-          if (access) {
-            token.accessToken = access;
-          }
-          if (refresh) {
-            token.refreshToken = refresh;
-          }
+          if (access) token.accessToken = access;
+          if (refresh) token.refreshToken = refresh;
 
           const roleFromBackend = deriveRoleFromBackendUser(backendUser);
           token.role = normalizeRole(roleFromBackend || (token as any).role || "user");
           token.hasPlan = Boolean((backendUser as any)?.has_plan);
           token.image = (backendUser as any)?.image || (backendUser as any)?.profile_image || (backendUser as any)?.profile_picture || (backendUser as any)?.avatar || undefined;
-
-          console.log("[auth] google login ok", {
-            email: (backendUser as any)?.email,
-            role: token.role,
-          });
+          token.lastVerified = Date.now();
         } catch (err) {
           console.error("[auth] google token exchange failed", err);
+        }
+      }
+
+      // 3) Periodic Token Validation & Background Refresh
+      // We verify once immediately on startup/reload (if lastVerified is missing) and then every 5 mins.
+      const isInitialLoad = !token.lastVerified;
+      const isStale = (token.lastVerified as number) && (Date.now() - (token.lastVerified as number)) > 1000 * 60 * 5;
+      const shouldVerify = isInitialLoad || isStale;
+
+      if (token.accessToken && token.refreshToken && shouldVerify) {
+        try {
+          const { data } = await api.post("/validate-token/", {
+            access: token.accessToken,
+            refresh: token.refreshToken,
+          });
+
+          if (data.valid && data.access) {
+            token.accessToken = data.access;
+            if (data.refresh) token.refreshToken = data.refresh;
+
+            // Sync user data in case it changed on backend (role change, plan change, name change)
+            if (data.user) {
+              token.name = data.user.name || token.name;
+              token.role = normalizeRole(deriveRoleFromBackendUser(data.user) || token.role);
+              token.hasPlan = Boolean(data.user.has_plan);
+              token.image = data.user.image || data.user.profile_image || token.image;
+            }
+            token.lastVerified = Date.now();
+          } else {
+            // If backend says invalid, we can't force signout here easily,
+            // but we can strip the token to let middleware/client handle it.
+            return { ...token, error: "RefreshAccessTokenError" };
+          }
+        } catch (error) {
+          console.error("[auth] Background validation failed", error);
+          return { ...token, error: "RefreshAccessTokenError" };
         }
       }
 
@@ -375,6 +393,7 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       session.user = {
         ...session.user,
+        name: typeof token.name === "string" ? token.name : session.user?.name,
         role: typeof token.role === "string" ? token.role : undefined,
         hasPlan: Boolean(token.hasPlan),
         image: (token as any).image as string | undefined,

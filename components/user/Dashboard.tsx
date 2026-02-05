@@ -258,12 +258,17 @@ export default function Dashboard() {
     const closeSocket = () => {
       const ws = wsRef.current;
       wsRef.current = null;
-      if (
-        ws &&
-        (ws.readyState === WebSocket.OPEN ||
-          ws.readyState === WebSocket.CONNECTING)
-      ) {
-        ws.close();
+      if (ws) {
+        // Clear listeners so the browser doesn't trigger 'error' or 'close' handlers
+        // that might log warnings or try to reconnect.
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          ws.close();
+        }
       }
     };
 

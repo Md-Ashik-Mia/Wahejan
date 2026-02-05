@@ -538,7 +538,7 @@ const SettingsPage: React.FC = () => {
     toastifyToast.info("Updating password...");
 
     try {
-      const [endpoint, fallbackEndpoint] = apiVariantPaths("/auth/users/me");
+      const [endpoint, fallbackEndpoint] = apiVariantPaths("/auth/users/me/");
       const payload = { password: trimmedNew, old_password: trimmedCurrent };
       try {
         await userApi.patch(endpoint, payload);
