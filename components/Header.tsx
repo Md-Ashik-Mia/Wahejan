@@ -73,7 +73,7 @@ export default function Header() {
 
     const fetchProfile = async () => {
       try {
-        const res = await userapi.get("/auth/users/me/");
+        const res = await userapi.get("/auth/users/me");
         const latest = parseProfile(res.data);
         if (!latest.name && !latest.image) return;
         const next = {
@@ -146,7 +146,7 @@ export default function Header() {
       if (nameInput.trim()) form.append("name", nameInput.trim());
       if (imageFile) form.append("image", imageFile);
 
-      const res = await userapi.patch("/auth/users/me/", form, {
+      const res = await userapi.patch("/auth/users/me", form, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 

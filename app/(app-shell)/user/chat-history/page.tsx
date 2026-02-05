@@ -2,10 +2,21 @@
 
 import { useSession } from "next-auth/react";
 import { useEffect, useRef, useState } from "react";
-import { FaFacebookF, FaInstagram, FaTelegramPlane, FaWhatsapp } from "react-icons/fa";
+import {
+  FaFacebookF,
+  FaInstagram,
+  FaTelegramPlane,
+  FaWhatsapp,
+} from "react-icons/fa";
 import { MdSms } from "react-icons/md";
 
-type Platform = "facebook" | "whatsapp" | "instagram" | "telegram" | "sms" | string;
+type Platform =
+  | "facebook"
+  | "whatsapp"
+  | "instagram"
+  | "telegram"
+  | "sms"
+  | string;
 
 interface Profile {
   platform: Platform;
@@ -51,12 +62,18 @@ export default function ChatPage() {
   const wsRef = useRef<WebSocket | null>(null);
 
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [conversations, setConversations] = useState<Record<string, Conversation>>({});
-  const [selectedPlatform, setSelectedPlatform] = useState<Platform | null>(null);
-  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<
+    Record<string, Conversation>
+  >({});
+  const [selectedPlatform, setSelectedPlatform] = useState<Platform | null>(
+    null,
+  );
+  const [selectedConversationId, setSelectedConversationId] = useState<
+    string | null
+  >(null);
 
   const selectedConversation = selectedConversationId
-    ? conversations[selectedConversationId] ?? null
+    ? (conversations[selectedConversationId] ?? null)
     : null;
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -68,9 +85,10 @@ export default function ChatPage() {
   useEffect(() => {
     if (!accessToken) return;
 
-    const ws = new WebSocket(
-      `wss://ape-in-eft.ngrok-free.app/ws/chat/?token=${accessToken}`
-    );
+    const wsBase = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "")
+      .replace(/\/api\/?$/, "")
+      .replace(/^http/, "ws");
+    const ws = new WebSocket(`${wsBase}/ws/chat/?token=${accessToken}`);
 
     wsRef.current = ws;
 
@@ -155,14 +173,17 @@ export default function ChatPage() {
             platform,
             clientId,
             timestamp,
-            direction
+            direction,
           });
 
           setConversations((prev) => {
             const existing = prev[convId];
 
             if (!existing) {
-              console.warn("[WS DEBUG] Conversation NOT found, creating new one:", convId);
+              console.warn(
+                "[WS DEBUG] Conversation NOT found, creating new one:",
+                convId,
+              );
               const newMsg: ChatMessage = {
                 id: `${timestamp}-${direction}-${Math.random()}`,
                 platform,
@@ -181,8 +202,8 @@ export default function ChatPage() {
                   clientId,
                   roomId,
                   messages: [newMsg],
-                  historyFetched: false
-                }
+                  historyFetched: false,
+                },
               };
             }
 
@@ -227,8 +248,11 @@ export default function ChatPage() {
     };
 
     return () => {
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-          ws.close();
+      if (
+        ws.readyState === WebSocket.OPEN ||
+        ws.readyState === WebSocket.CONNECTING
+      ) {
+        ws.close();
       }
       wsRef.current = null;
     };
@@ -239,7 +263,12 @@ export default function ChatPage() {
   ───────────────────────────── */
   useEffect(() => {
     const fetchHistory = async () => {
-      if (!selectedConversation || selectedConversation.historyFetched || !accessToken) return;
+      if (
+        !selectedConversation ||
+        selectedConversation.historyFetched ||
+        !accessToken
+      )
+        return;
 
       try {
         // Mark as fetched immediately to prevent duplicate calls
@@ -258,8 +287,8 @@ export default function ChatPage() {
         const res = await fetch(
           `https://ape-in-eft.ngrok-free.app/api/chat/old-message/${selectedConversation.platform}/${selectedConversation.roomId}/`,
           {
-             headers: { Authorization: `Bearer ${accessToken}` }
-          }
+            headers: { Authorization: `Bearer ${accessToken}` },
+          },
         );
 
         if (!res.ok) throw new Error("Failed to fetch history");
@@ -278,16 +307,16 @@ export default function ChatPage() {
           }));
 
           setConversations((prev) => {
-             const conv = prev[selectedConversation.id];
-             if (!conv) return prev;
-             const combined = [...historyMessages, ...conv.messages];
-             return {
-               ...prev,
-               [selectedConversation.id]: {
-                 ...conv,
-                 messages: combined,
-               },
-             };
+            const conv = prev[selectedConversation.id];
+            if (!conv) return prev;
+            const combined = [...historyMessages, ...conv.messages];
+            return {
+              ...prev,
+              [selectedConversation.id]: {
+                ...conv,
+                messages: combined,
+              },
+            };
           });
         }
       } catch (err) {
@@ -296,7 +325,11 @@ export default function ChatPage() {
     };
 
     fetchHistory();
-  }, [selectedConversationId, accessToken, selectedConversation?.historyFetched]);
+  }, [
+    selectedConversationId,
+    accessToken,
+    selectedConversation?.historyFetched,
+  ]);
 
   /* ─────────────────────────────
      3) Derived data for UI
@@ -368,7 +401,6 @@ export default function ChatPage() {
       <section className="w-80 flex flex-col bg-[#080b12] border-r border-white/5">
         <div className="px-4 py-3 border-b border-white/5">
           <h2 className="text-lg font-semibold">Messages History</h2>
-
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -381,7 +413,9 @@ export default function ChatPage() {
           {filteredConversations.map((c) => {
             const isActive = c.id === selectedConversationId;
             const sorted = [...c.messages].sort(
-              (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+              (a, b) =>
+                new Date(a.timestamp).getTime() -
+                new Date(b.timestamp).getTime(),
             );
             const lastMsg = sorted[sorted.length - 1];
 
@@ -390,11 +424,7 @@ export default function ChatPage() {
                 key={c.id}
                 onClick={() => setSelectedConversationId(c.id)}
                 className={`w-full flex flex-col items-start px-4 py-3 text-left text-sm border-b border-white/5
-                  ${
-                    isActive
-                      ? "bg-[#182132]"
-                      : "hover:bg-[#111521]"
-                  }`}
+                  ${isActive ? "bg-[#182132]" : "hover:bg-[#111521]"}`}
               >
                 <div className="flex w-full justify-between">
                   <span className="font-semibold">
@@ -452,7 +482,9 @@ export default function ChatPage() {
                   <span className="text-base leading-none">
                     <PlatformIcon platform={selectedConversation.platform} />
                   </span>
-                  <span className="uppercase">{selectedConversation.platform}</span>
+                  <span className="uppercase">
+                    {selectedConversation.platform}
+                  </span>
                 </span>
               </div>
             </>
@@ -503,7 +535,6 @@ export default function ChatPage() {
             </div>
           )}
         </div>
-
       </main>
     </div>
   );

@@ -28,10 +28,16 @@ interface Message {
   timestamp: string;
 }
 
-const TESTCHAT_WS_BASE = "wss://ape-in-eft.ngrok-free.app/ws/testchat/";
+const WS_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "")
+  .replace(/\/api\/?$/, "")
+  .replace(/^http/, "ws");
+const TESTCHAT_WS_BASE = `${WS_BASE}/ws/testchat/`;
 
 function formatTime() {
-  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function safeJsonParse(value: unknown): unknown {
@@ -86,7 +92,11 @@ const TestChatPage: React.FC = () => {
     const closeSocket = () => {
       const ws = wsRef.current;
       wsRef.current = null;
-      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+      if (
+        ws &&
+        (ws.readyState === WebSocket.OPEN ||
+          ws.readyState === WebSocket.CONNECTING)
+      ) {
         ws.close();
       }
     };
@@ -118,7 +128,10 @@ const TestChatPage: React.FC = () => {
 
         const data = parsed as Record<string, unknown>;
 
-        if (typeof data.status === "string" && data.status.toLowerCase() === "typing") {
+        if (
+          typeof data.status === "string" &&
+          data.status.toLowerCase() === "typing"
+        ) {
           setIsBotTyping(true);
           return;
         }
@@ -218,19 +231,28 @@ const TestChatPage: React.FC = () => {
       <div className="px-6 py-4 bg-[#1a1f26]/50 backdrop-blur-md border-b border-white/5 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className="relative">
-             <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg">
-                AI
-             </div>
-             <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#1a1f26] ${
-               connectionStatus === 'connected' ? 'bg-green-500' :
-               connectionStatus === 'connecting' ? 'bg-yellow-500 animate-pulse' : 'bg-red-500'
-             }`} />
+            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg">
+              AI
+            </div>
+            <div
+              className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#1a1f26] ${
+                connectionStatus === "connected"
+                  ? "bg-green-500"
+                  : connectionStatus === "connecting"
+                    ? "bg-yellow-500 animate-pulse"
+                    : "bg-red-500"
+              }`}
+            />
           </div>
           <div>
-             <h1 className="text-base font-semibold text-white leading-tight">AI Assistant Test Chat</h1>
-             <p className="text-[11px] text-gray-400 uppercase tracking-wider font-medium">
-               {connectionStatus === 'connected' ? 'Experimental Active' : connectionStatus}
-             </p>
+            <h1 className="text-base font-semibold text-white leading-tight">
+              AI Assistant Test Chat
+            </h1>
+            <p className="text-[11px] text-gray-400 uppercase tracking-wider font-medium">
+              {connectionStatus === "connected"
+                ? "Experimental Active"
+                : connectionStatus}
+            </p>
           </div>
         </div>
 
@@ -247,11 +269,13 @@ const TestChatPage: React.FC = () => {
         {messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-40">
             <div className="w-16 h-16 rounded-3xl bg-white/5 flex items-center justify-center">
-               <SendIcon className="w-8 h-8 text-white/50" />
+              <SendIcon className="w-8 h-8 text-white/50" />
             </div>
             <div>
               <p className="text-lg font-medium">Your AI Playground</p>
-              <p className="text-sm">Start a conversation to test settings in real-time</p>
+              <p className="text-sm">
+                Start a conversation to test settings in real-time
+              </p>
             </div>
           </div>
         )}
@@ -268,7 +292,9 @@ const TestChatPage: React.FC = () => {
                   : "bg-[#1a1f26] text-gray-100 border border-white/5 rounded-tl-none"
               }`}
             >
-              <p className="text-[15px] leading-relaxed select-text">{msg.text}</p>
+              <p className="text-[15px] leading-relaxed select-text">
+                {msg.text}
+              </p>
             </div>
             <span className="text-[10px] text-gray-500 mt-1.5 px-1 font-medium">
               {msg.timestamp}
@@ -308,7 +334,7 @@ const TestChatPage: React.FC = () => {
           </button>
         </div>
         <p className="text-center text-[10px] text-gray-600 mt-3 font-medium uppercase tracking-widest">
-           Experimental Interface • Powered by Verse AI
+          Experimental Interface • Powered by Verse AI
         </p>
       </div>
     </div>
