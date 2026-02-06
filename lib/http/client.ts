@@ -153,7 +153,27 @@ export const api = axios.create({
 });
 
 // REQUEST interceptors (public/auth requests)
-api.interceptors.request.use(attachClientInfo);
+api.interceptors.request.use((cfg) => {
+  if (typeof window === "undefined") {
+    console.log(`[server-api] Requesting: ${cfg.baseURL}${cfg.url}`);
+  }
+  return attachClientInfo(cfg);
+});
+
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (typeof window === "undefined") {
+      console.error("[server-api] Error details:", {
+        url: err.config?.url,
+        status: err.response?.status,
+        data: err.response?.data,
+        message: err.message,
+      });
+    }
+    return Promise.reject(err);
+  }
+);
 
 /** Regular user API */
 export const userApi = axios.create({
