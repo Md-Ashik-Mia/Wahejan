@@ -200,6 +200,10 @@ function tryParseClientUserAgent(rawClientInfo: string): string | null {
   }
 }
 
+if (process.env.NODE_ENV === "production" && !process.env.NEXTAUTH_URL) {
+  console.warn("[auth] Warning: NEXTAUTH_URL is missing in production environment");
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     // 1) Email + password (Python backend)
