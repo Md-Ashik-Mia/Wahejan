@@ -205,6 +205,9 @@ if (process.env.NODE_ENV === "production" && !process.env.NEXTAUTH_URL) {
 }
 
 export const authOptions: NextAuthOptions = {
+  // Force secret and secure cookies for AWS Amplify Production
+  secret: process.env.NEXTAUTH_SECRET,
+  useSecureCookies: process.env.NODE_ENV === "production",
   providers: [
     // 1) Email + password (Python backend)
     CredentialsProvider({

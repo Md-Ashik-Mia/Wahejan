@@ -8,6 +8,11 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  // Explicitly pass these to the server runtime
+  env: {
+    NEXTAUTH_URL: process.env.NEXTAUTH_URL || '',
+    NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET || '',
+  }
 };
 
 export default nextConfig;
