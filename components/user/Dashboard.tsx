@@ -68,8 +68,6 @@ const ALERTS_WS_BASE = `${WS_BASE}/ws/alerts/`;
 const ALERTS_API_ENDPOINTS = [
   "/alerts/",
   "/alerts",
-  "/api/alerts/",
-  "/api/alerts",
 ] as const;
 
 function extractList(payload: unknown): unknown[] {

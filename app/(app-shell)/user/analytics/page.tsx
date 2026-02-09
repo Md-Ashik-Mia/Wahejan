@@ -218,17 +218,10 @@ const AnalyticsDashboard: React.FC = () => {
     };
 
     const candidates: Array<{ endpoint: string; params: Record<string, string> }> = [
-      // baseURL ends with `/api`
       { endpoint: "/analytics/", params: baseParams },
       { endpoint: "/analytics", params: baseParams },
-
-      // baseURL does NOT end with `/api`
-      { endpoint: "/api/analytics/", params: baseParams },
-      { endpoint: "/api/analytics", params: baseParams },
-
       // fallback if backend doesn't support chosen time range
       { endpoint: "/analytics/", params: { ...baseParams, time: "this_year" } },
-      { endpoint: "/api/analytics/", params: { ...baseParams, time: "this_year" } },
     ];
 
     let lastError: unknown = null;
@@ -288,8 +281,6 @@ const AnalyticsDashboard: React.FC = () => {
     const candidates = [
       "/finance-data/",
       "/finance-data",
-      "/api/finance-data/",
-      "/api/finance-data",
     ];
 
     let lastError: unknown = null;
@@ -344,8 +335,6 @@ const AnalyticsDashboard: React.FC = () => {
     const candidates = [
       "/chat/question-leaderboard/",
       "/chat/question-leaderboard",
-      "/api/chat/question-leaderboard/",
-      "/api/chat/question-leaderboard",
     ];
 
     let lastError: unknown = null;

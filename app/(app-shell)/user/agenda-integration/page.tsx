@@ -172,8 +172,6 @@ const AgendaIntegrationPage: React.FC = () => {
     () => [
       "/bookings/monthly/",
       "/bookings/monthly",
-      "/api/bookings/monthly/",
-      "/api/bookings/monthly",
     ],
     [],
   );
@@ -182,8 +180,6 @@ const AgendaIntegrationPage: React.FC = () => {
     () => [
       "/google/calendar/connect/",
       "/google/calendar/connect",
-      "/api/google/calendar/connect/",
-      "/api/google/calendar/connect",
     ],
     [],
   );
@@ -278,7 +274,7 @@ const AgendaIntegrationPage: React.FC = () => {
   }, [googleConnectEndpoints]);
 
   const createBookingEndpoints = useMemo(
-    () => ["/booking/", "/booking", "/api/booking/", "/api/booking"],
+    () => ["/booking/", "/booking"],
     [],
   );
 

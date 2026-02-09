@@ -3,10 +3,10 @@
 import { useSession } from "next-auth/react";
 import { useEffect, useRef, useState } from "react";
 import {
-  FaFacebookF,
-  FaInstagram,
-  FaTelegramPlane,
-  FaWhatsapp,
+    FaFacebookF,
+    FaInstagram,
+    FaTelegramPlane,
+    FaWhatsapp,
 } from "react-icons/fa";
 import { MdSms } from "react-icons/md";
 
@@ -85,10 +85,19 @@ export default function ChatPage() {
   useEffect(() => {
     if (!accessToken) return;
 
-    const wsBase = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "")
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || (typeof window !== "undefined" ? `${window.location.protocol}//${window.location.host}/api` : "");
+    const wsBase = apiBase
       .replace(/\/api\/?$/, "")
       .replace(/^http/, "ws");
-    const ws = new WebSocket(`${wsBase}/ws/chat/?token=${accessToken}`);
+
+    if (!wsBase) {
+      console.error("WS error: WebSocket base URL could not be determined.");
+      return;
+    }
+
+    const wsUrl = `${wsBase}/ws/chat/?token=${accessToken}`;
+    console.log("Connecting to WebSocket:", wsUrl);
+    const ws = new WebSocket(wsUrl);
 
     wsRef.current = ws;
 
@@ -235,12 +244,12 @@ export default function ChatPage() {
           setSelectedConversationId((prevId) => prevId ?? convId);
         }
       } catch (err) {
-        console.error("WS parse error:", err, event.data);
+        console.warn("WS parse error:", err, event.data);
       }
     };
 
     ws.onerror = (err) => {
-      console.error("WS error", err);
+      console.warn("WebSocket non-critical error or connection failure:", err);
     };
 
     ws.onclose = () => {
@@ -248,15 +257,22 @@ export default function ChatPage() {
     };
 
     return () => {
-      if (
-        ws.readyState === WebSocket.OPEN ||
-        ws.readyState === WebSocket.CONNECTING
-      ) {
-        ws.close();
+      if (wsRef.current) {
+        const ws = wsRef.current;
+        wsRef.current = null;
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+        if (
+          ws.readyState === WebSocket.OPEN ||
+          ws.readyState === WebSocket.CONNECTING
+        ) {
+          ws.close();
+        }
       }
-      wsRef.current = null;
     };
-  }, [accessToken, selectedPlatform]);
+  }, [accessToken]);
 
   /* ─────────────────────────────
      1.5) Fetch History
@@ -284,8 +300,11 @@ export default function ChatPage() {
           };
         });
 
+        const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || (typeof window !== "undefined" ? `${window.location.protocol}//${window.location.host}/api` : "");
+        const historyUrl = `${apiBase.replace(/\/$/, "")}/chat/old-message/${selectedConversation.platform}/${selectedConversation.roomId}/`;
+
         const res = await fetch(
-          `https://ape-in-eft.ngrok-free.app/api/chat/old-message/${selectedConversation.platform}/${selectedConversation.roomId}/`,
+          historyUrl,
           {
             headers: { Authorization: `Bearer ${accessToken}` },
           },
@@ -320,7 +339,7 @@ export default function ChatPage() {
           });
         }
       } catch (err) {
-        console.error("Error fetching history:", err);
+        console.warn("Error fetching history:", err);
       }
     };
 

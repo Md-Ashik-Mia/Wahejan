@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { ToastContainer, toast as toastifyToast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import Swal from "sweetalert2";
 
 type ApiPlan = {
   id: number;
@@ -34,6 +35,10 @@ type CreateSubscriptionResponse = {
 
 type StripeOnboardResponse = {
   onboarding_url?: string;
+};
+
+type StripeAccountResponse = {
+  connect_id?: string;
 };
 
 type ApiSession = {
@@ -137,9 +142,6 @@ const SettingsPage: React.FC = () => {
     number | null
   >(null);
   const [upgradeError, setUpgradeError] = useState<string | null>(null);
-  const [canceledPlans, setCanceledPlans] = useState<string[]>(
-    fakeUserSettings.canceledPlans,
-  );
   const [aiTraining, setAiTraining] = useState(fakeUserSettings.aiTraining);
   const [sessions, setSessions] = useState<ApiSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
@@ -154,6 +156,9 @@ const SettingsPage: React.FC = () => {
   const [stripeOnboardError, setStripeOnboardError] = useState<string | null>(
     null,
   );
+  const [isStripeConnected, setIsStripeConnected] = useState(false);
+  const [stripeStatusLoading, setStripeStatusLoading] = useState(true);
+  const [cancelLoading, setCancelLoading] = useState(false);
 
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -511,6 +516,40 @@ const SettingsPage: React.FC = () => {
     }
   }, [apiVariantPaths, getErrorMessage, getStatusCode]);
 
+  const loadStripeStatus = useCallback(async () => {
+    setStripeStatusLoading(true);
+    try {
+      const [endpoint, fallbackEndpoint] = apiVariantPaths(
+        "/finance/connect/account/",
+      );
+      let res;
+      try {
+        res = await userApi.get<StripeAccountResponse>(endpoint);
+      } catch (error: unknown) {
+        if (getStatusCode(error) === 404) {
+          res = await userApi.get<StripeAccountResponse>(fallbackEndpoint);
+        } else {
+          throw error;
+        }
+      }
+
+      if (res?.data?.connect_id) {
+        setIsStripeConnected(true);
+      } else {
+        setIsStripeConnected(false);
+      }
+    } catch (error: unknown) {
+      console.error("Failed to load Stripe status", error);
+      setIsStripeConnected(false);
+    } finally {
+      setStripeStatusLoading(false);
+    }
+  }, [apiVariantPaths, getStatusCode]);
+
+  useEffect(() => {
+    loadStripeStatus();
+  }, [loadStripeStatus]);
+
   const handleChangePassword = useCallback(async () => {
     const trimmedCurrent = currentPassword.trim();
     const trimmedNew = newPassword.trim();
@@ -590,14 +629,57 @@ const SettingsPage: React.FC = () => {
   // ============================================
   // 🔹 Handlers
   // ============================================
-  const handleCancelPlan = (plan: string) => {
-    if (canceledPlans.includes(plan)) {
-      setCanceledPlans((prev) => prev.filter((p) => p !== plan));
-    } else {
-      setCanceledPlans((prev) => [...prev, plan]);
+  const handleCancelSubscription = useCallback(async () => {
+    if (cancelLoading) return;
+    if (!activeSubscription) return;
+
+    const result = await Swal.fire({
+      title: "Are you sure?",
+      text: "You won't be able to revert this!",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#3085d6",
+      cancelButtonColor: "#d33",
+      confirmButtonText: "Yes, cancel it!",
+      background: "#272727",
+      color: "#fff",
+    });
+
+    if (!result.isConfirmed) return;
+
+    setCancelLoading(true);
+    const toastId = toast.loading("Canceling subscription...");
+
+    try {
+      const [endpoint, fallbackEndpoint] = apiVariantPaths(
+        "/finance/cancel-subscription/",
+      );
+
+      try {
+        await userApi.post(endpoint, {});
+      } catch (error: unknown) {
+        if (getStatusCode(error) === 404) {
+          await userApi.post(fallbackEndpoint, {});
+        } else {
+          throw error;
+        }
+      }
+
+      toast.success("Subscription canceled successfully", { id: toastId });
+      await loadActiveSubscription();
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error), { id: toastId });
+    } finally {
+      setCancelLoading(false);
     }
-    // TODO: PATCH /api/subscription/cancel
-  };
+  }, [
+    activeSubscription,
+    apiVariantPaths,
+    cancelLoading,
+    getErrorMessage,
+    getStatusCode,
+    loadActiveSubscription,
+  ]);
 
   const handleUpgradePlan = async (plan: ApiPlan) => {
     setUpgradeError(null);
@@ -643,7 +725,6 @@ const SettingsPage: React.FC = () => {
         }
       }
 
-      setCanceledPlans((prev) => prev.filter((p) => p !== plan.name));
       await loadActiveSubscription({ silent: true });
     } catch (error: unknown) {
       setUpgradeError(getErrorMessage(error));
@@ -681,12 +762,18 @@ const SettingsPage: React.FC = () => {
             <button
               type="button"
               onClick={handleStripeOnboard}
-              disabled={stripeOnboardLoading}
+              disabled={stripeOnboardLoading || stripeStatusLoading}
               className={`bg-blue-600 px-4 py-2 rounded-lg text-sm hover:bg-blue-700 active:scale-95 transition ${
-                stripeOnboardLoading ? "opacity-70 cursor-not-allowed" : ""
+                stripeOnboardLoading || stripeStatusLoading
+                  ? "opacity-70 cursor-not-allowed"
+                  : ""
               }`}
             >
-              {stripeOnboardLoading ? "Redirecting..." : "Add Stripe"}
+              {stripeOnboardLoading
+                ? "Redirecting..."
+                : isStripeConnected
+                  ? "Update"
+                  : "Add Stripe"}
             </button>
           </div>
 
@@ -723,7 +810,7 @@ const SettingsPage: React.FC = () => {
         ) : activeSubscription ? (
           <div className="bg-[#272727] rounded-xl p-6 shadow-lg mb-6">
             <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div>
+              <div className="flex-1 min-w-[200px]">
                 <p className="text-gray-400 text-sm">Current plan</p>
                 <p className="text-white font-semibold">
                   {activeSubscription.plan_name} •{" "}
@@ -736,7 +823,7 @@ const SettingsPage: React.FC = () => {
                     : "Auto-renew: Off"}
                 </p>
               </div>
-              <div className="text-sm text-gray-300">
+              <div className="text-sm text-gray-300 flex-1 min-w-[200px]">
                 <p>
                   <span className="text-gray-400">Start:</span>{" "}
                   {new Date(activeSubscription.start).toLocaleString()}
@@ -745,6 +832,18 @@ const SettingsPage: React.FC = () => {
                   <span className="text-gray-400">End:</span>{" "}
                   {new Date(activeSubscription.end).toLocaleString()}
                 </p>
+              </div>
+              <div className="w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={handleCancelSubscription}
+                  disabled={cancelLoading}
+                  className={`w-full sm:w-auto bg-red-600/20 text-red-400 border border-red-500/30 px-4 py-2 rounded-lg text-sm hover:bg-red-600/30 active:scale-95 transition ${
+                    cancelLoading ? "opacity-70 cursor-not-allowed" : ""
+                  }`}
+                >
+                  {cancelLoading ? "Canceling..." : "Cancel Subscription"}
+                </button>
               </div>
             </div>
           </div>
@@ -769,14 +868,13 @@ const SettingsPage: React.FC = () => {
               const planKey = plan.name.trim().toLowerCase();
               const activeKey = (activePlan ?? "").trim().toLowerCase();
               const isActive = !!activeKey && planKey === activeKey;
-              const isCanceled = canceledPlans.includes(plan.name);
               const isUpgrading = upgradeLoadingPlanId === plan.id;
 
               return (
                 <div
                   key={plan.id}
                   className={`bg-[#272727] p-6 rounded-xl border transition-all ${
-                    isActive && !isCanceled
+                    isActive
                       ? "border-blue-500 shadow-lg scale-[1.02]"
                       : "border-gray-700 hover:border-gray-600"
                   }`}
@@ -795,22 +893,13 @@ const SettingsPage: React.FC = () => {
                     <li>• Token limit: {plan.token_limit}</li>
                   </ul>
 
-                  {/* Conditional Button Logic (local UI only) */}
-                  {isActive && !isCanceled ? (
-                    <>
-                      <button className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 active:scale-95 transition">
-                        Active Plan
-                      </button>
-                    </>
-                  ) : isActive && isCanceled ? (
-                    <button
-                      onClick={() => handleCancelPlan(plan.name)}
-                      className="w-full py-2 rounded-lg bg-gray-700 hover:bg-blue-700 active:scale-95 transition"
-                    >
-                      Upgrade Plan
+                  {isActive ? (
+                    <button className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 active:scale-95 transition cursor-default">
+                      Active Plan
                     </button>
                   ) : (
                     <button
+                      type="button"
                       onClick={() => handleUpgradePlan(plan)}
                       disabled={isUpgrading}
                       className={`w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 active:scale-95 transition ${

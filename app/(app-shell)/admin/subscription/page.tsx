@@ -76,14 +76,11 @@ async function requestWithCandidates<T>(
 // Some environments set NEXT_PUBLIC_API_BASE_URL with trailing `/api`.
 // In that case endpoints must NOT start with `/api`, otherwise we hit `/api/api/...`.
 const ADMIN_ENDPOINTS = {
-  plans: ["/admin/subscription-plan/", "/api/admin/subscription-plan/"],
-  planById: (id: number) => [
-    `/admin/subscription-plan/${id}/`,
-    `/api/admin/subscription-plan/${id}/`,
-  ],
-  requests: ["/admin/user-plan-requests/", "/api/admin/user-plan-requests/"],
-  approve: ["/admin/approve-user-plan/", "/api/admin/approve-user-plan/"],
-  reject: ["/admin/reject-user-plan/", "/api/admin/reject-user-plan/"],
+  plans: ["/admin/subscription-plan/"],
+  planById: (id: number) => [`/admin/subscription-plan/${id}/`],
+  requests: ["/admin/user-plan-requests/"],
+  approve: ["/admin/approve-user-plan/"],
+  reject: ["/admin/reject-user-plan/"],
 } as const;
 
 function normalizePrice(value: string | number): number {

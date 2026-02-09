@@ -132,6 +132,8 @@ type AppUser = {
   hasPlan: boolean;
   accessToken: string;
   refreshToken?: string;
+  permissions?: any;
+  company?: any;
 };
 
 function normalizeRole(role: unknown): string {
@@ -270,9 +272,11 @@ export const authOptions: NextAuthOptions = {
             email: user.email,
             image: user.image || user.profile_image || user.profile_picture || user.avatar || undefined,
             role: deriveRoleFromBackendUser(user) || "user",
-            hasPlan: Boolean((user as any).has_plan),
+            hasPlan: Boolean((user as any).has_plan || data.plan),
             accessToken: access,
             refreshToken: refresh,
+            permissions: data.permissions,
+            company: user.company,
           };
 
           // Helpful during debugging (prints in server terminal only)
@@ -328,6 +332,8 @@ export const authOptions: NextAuthOptions = {
         token.accessToken = u.accessToken;
         token.refreshToken = u.refreshToken;
         token.image = u.image;
+        token.permissions = u.permissions;
+        token.company = u.company;
         token.lastVerified = Date.now();
       }
 
@@ -349,8 +355,10 @@ export const authOptions: NextAuthOptions = {
 
           const roleFromBackend = deriveRoleFromBackendUser(backendUser);
           token.role = normalizeRole(roleFromBackend || (token as any).role || "user");
-          token.hasPlan = Boolean((backendUser as any)?.has_plan);
+          token.hasPlan = Boolean((backendUser as any)?.has_plan || (data as any)?.plan);
           token.image = (backendUser as any)?.image || (backendUser as any)?.profile_image || (backendUser as any)?.profile_picture || (backendUser as any)?.avatar || undefined;
+          token.permissions = (data as any)?.permissions;
+          token.company = backendUser?.company;
           token.lastVerified = Date.now();
         } catch (err) {
           console.error("[auth] google token exchange failed", err);
@@ -378,8 +386,10 @@ export const authOptions: NextAuthOptions = {
             if (data.user) {
               token.name = data.user.name || token.name;
               token.role = normalizeRole(deriveRoleFromBackendUser(data.user) || token.role);
-              token.hasPlan = Boolean(data.user.has_plan);
+              token.hasPlan = Boolean(data.user.has_plan || data.plan);
               token.image = data.user.image || data.user.profile_image || token.image;
+              token.permissions = data.permissions || token.permissions;
+              token.company = data.user.company || token.company;
             }
             token.lastVerified = Date.now();
           } else {
@@ -398,20 +408,21 @@ export const authOptions: NextAuthOptions = {
 
     // What goes to client side
     async session({ session, token }) {
-      session.user = {
-        ...session.user,
-        name: typeof token.name === "string" ? token.name : session.user?.name,
-        role: typeof token.role === "string" ? token.role : undefined,
-        hasPlan: Boolean(token.hasPlan),
-        image: (token as any).image as string | undefined,
-      } as unknown as typeof session.user;
-
-      (session as unknown as { accessToken?: unknown }).accessToken = token.accessToken;
-      (session as unknown as { refreshToken?: unknown }).refreshToken = (token as any).refreshToken;
+      if (session.user) {
+        (session.user as any).name = token.name || session.user.name;
+        (session.user as any).email = token.email || session.user.email;
+        (session.user as any).role = (token as any).role;
+        (session.user as any).hasPlan = (token as any).hasPlan;
+        (session.user as any).image = (token as any).image || (token as any).picture;
+        (session.user as any).permissions = (token as any).permissions;
+        (session.user as any).company = (token as any).company;
+      }
+      (session as any).accessToken = token.accessToken;
+      (session as any).refreshToken = (token as any).refreshToken;
       return session;
     },
 
-    // Where to go after signIn (if you let NextAuth redirect)
+    // Where to go after signIn (if NextAuth handles redirection)
     async redirect({ baseUrl }) {
       return baseUrl;
     },

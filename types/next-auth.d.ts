@@ -6,6 +6,8 @@ declare module "next-auth" {
     user?: DefaultSession["user"] & {
       role?: string;
       hasPlan?: boolean;
+      permissions?: any;
+      company?: any;
     };
     accessToken?: string;
     refreshToken?: string;
@@ -16,6 +18,8 @@ declare module "next-auth" {
     hasPlan?: boolean;
     accessToken?: string;
     refreshToken?: string;
+    permissions?: any;
+    company?: any;
   }
 }
 
@@ -26,5 +30,7 @@ declare module "next-auth/jwt" {
     accessToken?: string;
     refreshToken?: string;
     image?: string;
+    permissions?: any;
+    company?: any;
   }
 }

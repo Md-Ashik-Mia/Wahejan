@@ -53,7 +53,7 @@ export default withAuth(
     // Some setups may nest custom fields differently; be defensive.
     const role = normalizeRole(
       (token as unknown as { role?: unknown })?.role ??
-        (token as unknown as { user?: { role?: unknown } })?.user?.role,
+      (token as unknown as { user?: { role?: unknown } })?.user?.role,
     );
     const hasPlan = token?.hasPlan;
     const path = req.nextUrl.pathname;
@@ -77,8 +77,8 @@ export default withAuth(
       return NextResponse.redirect(new URL("/unauthorized", req.url));
     }
 
-    // User section must be a real "user" (not admin).
-    if (path.startsWith("/user") && role !== "user") {
+    // User section must be a real "user" or "employee".
+    if (path.startsWith("/user") && role !== "user" && role !== "employee") {
       if (!role) return NextResponse.redirect(new URL("/login", req.url));
       if (role === "admin")
         return NextResponse.redirect(new URL("/admin/dashboard", req.url));

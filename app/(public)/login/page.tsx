@@ -194,7 +194,7 @@ export default function LoginPage() {
       router.replace("/admin/dashboard");
       return;
     }
-    if (role === "user") {
+    if (role === "user" || role === "employee") {
       router.replace("/user/dashboard");
       return;
     }
