@@ -1,18 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: 'standalone',
+  /* Amplify handles SSR output automatically; 'standalone' can sometimes cause path issues in Gen 1 */
   eslint: {
     ignoreDuringBuilds: true,
   },
   typescript: {
     ignoreBuildErrors: true,
   },
-  // Explicitly pass these to the server runtime
-  env: {
-    NEXTAUTH_URL: process.env.NEXTAUTH_URL || '',
-    NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET || '',
-  }
 };
 
 export default nextConfig;
