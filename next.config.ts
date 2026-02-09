@@ -1,12 +1,19 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* Amplify handles SSR output automatically; 'standalone' can sometimes cause path issues in Gen 1 */
+  /* IMPORTANT: Amplify Gen 1 Next.js 15 requires standalone output for SSR */
+  output: 'standalone',
   eslint: {
     ignoreDuringBuilds: true,
   },
   typescript: {
     ignoreBuildErrors: true,
+  },
+  // Allow the server to log more details for debugging Amplify failures
+  logging: {
+    fetches: {
+      fullUrl: true,
+    },
   },
 };
 

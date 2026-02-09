@@ -202,8 +202,30 @@ function tryParseClientUserAgent(rawClientInfo: string): string | null {
   }
 }
 
-if (process.env.NODE_ENV === "production" && !process.env.NEXTAUTH_URL) {
-  console.warn("[auth] Warning: NEXTAUTH_URL is missing in production environment");
+// lib/auth.ts
+// ... imports and helpers skip to deriveNEXTAUTH_URL
+function deriveNEXTAUTH_URL(): string | undefined {
+  if (typeof window !== "undefined") return undefined; // Server only
+
+  const envUrl = process.env.NEXTAUTH_URL;
+
+  // If we are in production but NEXTAUTH_URL is localhost or missing, it's a configuration error.
+  // We try to fallback to common cloud provider variables.
+  if (process.env.NODE_ENV === "production") {
+    if (!envUrl || envUrl.includes("localhost")) {
+      // Amplify / Vercel often provide the host in these variables
+      const host = process.env.VERCEL_URL || process.env.HOSTNAME || process.env.DOMAIN_NAME;
+      if (host) {
+        return `https://${host}`;
+      }
+    }
+  }
+  return envUrl;
+}
+
+const derivedUrl = deriveNEXTAUTH_URL();
+if (derivedUrl && (!process.env.NEXTAUTH_URL || process.env.NEXTAUTH_URL.includes("localhost"))) {
+  process.env.NEXTAUTH_URL = derivedUrl;
 }
 
 export const authOptions: NextAuthOptions = {
