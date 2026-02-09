@@ -1,8 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* IMPORTANT: Amplify Gen 1 Next.js 15 requires standalone output for SSR */
-  output: 'standalone',
+  /* Amplify Gen 1 handles SSR output automatically; 'standalone' is usually for Docker/Vercel */
   eslint: {
     ignoreDuringBuilds: true,
   },
