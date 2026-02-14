@@ -3,6 +3,7 @@
 import { userapi } from "@/lib/http/client";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
+import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
@@ -128,6 +129,12 @@ function titleCasePlatform(p: string): string {
 }
 
 export default function ChatProfilePage() {
+  const { data: session } = useSession();
+  const permission = session?.user?.permissions?.[0]?.toLowerCase();
+  const managementBlockedRoles = ["finance", "analyst", "read_only"];
+  const isManagementBlocked = Boolean(
+    permission && managementBlockedRoles.includes(permission),
+  );
   const platforms = useMemo(
     () => ["facebook", "whatsapp", "instagram"] as const,
     []
@@ -195,90 +202,118 @@ export default function ChatProfilePage() {
         </p>
 
         <div className="mt-8 space-y-6">
-          {platforms.map((platform, idx) => {
-            const q = queries[idx];
-            const loading = q.isLoading;
-            const error = q.isError ? getApiErrorMessage(q.error, "Failed to load") : null;
-            const items = (q.data ?? []) as ChatProfileItem[];
+          {!isManagementBlocked ? (
+            platforms.map((platform, idx) => {
+              const q = queries[idx];
+              const loading = q.isLoading;
+              const error = q.isError
+                ? getApiErrorMessage(q.error, "Failed to load")
+                : null;
+              const items = (q.data ?? []) as ChatProfileItem[];
 
-            return (
-              <section key={platform} className="rounded-2xl bg-[#121212] border border-gray-800">
-                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
-                  <div>
-                    <h2 className="text-lg font-semibold">{titleCasePlatform(platform)}</h2>
-                    <p className="text-xs text-gray-400">
-                      {loading
-                        ? "Loading…"
-                        : error
-                          ? error
-                          : items.length
-                            ? `${items.length} profile(s)`
-                            : "No profiles found"}
-                    </p>
+              return (
+                <section
+                  key={platform}
+                  className="rounded-2xl bg-[#121212] border border-gray-800"
+                >
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+                    <div>
+                      <h2 className="text-lg font-semibold">
+                        {titleCasePlatform(platform)}
+                      </h2>
+                      <p className="text-xs text-gray-400">
+                        {loading
+                          ? "Loading…"
+                          : error
+                            ? error
+                            : items.length
+                              ? `${items.length} profile(s)`
+                              : "No profiles found"}
+                      </p>
+                    </div>
                   </div>
-                </div>
 
-                <div className="p-5">
-                  {loading ? (
-                    <div className="text-sm text-gray-400">Fetching profiles…</div>
-                  ) : error ? (
-                    <div className="text-sm text-red-400">{error}</div>
-                  ) : items.length === 0 ? (
-                    <div className="text-sm text-gray-400">
-                      Nothing connected yet for {titleCasePlatform(platform)}.
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {items.map((p) => (
-                        <div
-                          key={`${platform}-${p.id}`}
-                          className="rounded-xl bg-[#1b1b1b] border border-gray-800 p-4"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className="font-semibold leading-tight">{p.name || "(Unnamed)"}</div>
-                              <div className="text-xs text-gray-400 mt-1">
-                                Profile ID: <span className="text-gray-200">{p.profile_id || "—"}</span>
-                              </div>
-                            </div>
-                            {(() => {
-                              const key = `${platform}:${p.id}`;
-                              const subscribing = Boolean(subscribingByKey[key]);
-                              const message = subscribeMessageByKey[key];
-                              const subscribed = message === "Subscribed";
-
-                              return (
-                                <div className="flex flex-col items-end gap-2">
-                                  <button
-                                    type="button"
-                                    disabled={subscribing || subscribed}
-                                    className={
-                                      "px-3 py-1.5 text-xs rounded-md font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed " +
-                                      (subscribed
-                                        ? "bg-green-600/20 text-green-200 border border-green-600/30"
-                                        : "bg-blue-600 hover:bg-blue-700 text-white")
-                                    }
-                                    onClick={() => handleSubscribe(platform, p.id)}
-                                  >
-                                    {subscribed ? "Subscribed" : subscribing ? "Subscribing…" : "Subscribe"}
-                                  </button>
-                                  {message && message !== "Subscribed" ? (
-                                    <div className="text-[11px] text-red-400 max-w-[180px] text-right">
-                                      {message}
-                                    </div>
-                                  ) : null}
+                  <div className="p-5">
+                    {loading ? (
+                      <div className="text-sm text-gray-400">
+                        Fetching profiles…
+                      </div>
+                    ) : error ? (
+                      <div className="text-sm text-red-400">{error}</div>
+                    ) : items.length === 0 ? (
+                      <div className="text-sm text-gray-400">
+                        Nothing connected yet for {titleCasePlatform(platform)}.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {items.map((p) => (
+                          <div
+                            key={`${platform}-${p.id}`}
+                            className="rounded-xl bg-[#1b1b1b] border border-gray-800 p-4"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="font-semibold leading-tight">
+                                  {p.name || "(Unnamed)"}
                                 </div>
-                              );
-                            })()}
+                                <div className="text-xs text-gray-400 mt-1">
+                                  Profile ID:{" "}
+                                  <span className="text-gray-200">
+                                    {p.profile_id || "—"}
+                                  </span>
+                                </div>
+                              </div>
+                              {(() => {
+                                const key = `${platform}:${p.id}`;
+                                const subscribing = Boolean(
+                                  subscribingByKey[key],
+                                );
+                                const message = subscribeMessageByKey[key];
+                                const subscribed = message === "Subscribed";
+
+                                return (
+                                  <div className="flex flex-col items-end gap-2">
+                                    <button
+                                      type="button"
+                                      disabled={subscribing || subscribed}
+                                      className={
+                                        "px-3 py-1.5 text-xs rounded-md font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed " +
+                                        (subscribed
+                                          ? "bg-green-600/20 text-green-200 border border-green-600/30"
+                                          : "bg-blue-600 hover:bg-blue-700 text-white")
+                                      }
+                                      onClick={() =>
+                                        handleSubscribe(platform, p.id)
+                                      }
+                                    >
+                                      {subscribed
+                                        ? "Subscribed"
+                                        : subscribing
+                                          ? "Subscribing…"
+                                          : "Subscribe"}
+                                    </button>
+                                    {message && message !== "Subscribed" ? (
+                                      <div className="text-[11px] text-red-400 max-w-[180px] text-right">
+                                        {message}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                );
+                              })()}
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </section>
-            );
-          })}
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </section>
+              );
+            })
+          ) : (
+            <p className="text-gray-400 text-center py-10">
+              You do not have permission to view chat profiles.
+            </p>
+          )}
         </div>
       </div>
     </div>

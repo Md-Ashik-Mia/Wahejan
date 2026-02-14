@@ -1,6 +1,7 @@
 "use client";
 import { userapi } from "@/lib/http/client";
 import axios, { type AxiosResponse } from "axios";
+import { useSession } from "next-auth/react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -73,6 +74,7 @@ function formatWhen(value: string, fallback = "—"): string {
 }
 
 const SupportPage: React.FC = () => {
+  const { data: session, status: sessionStatus } = useSession();
   const [issue, setIssue] = useState("");
   const [status, setStatus] = useState<
     "idle" | "loading" | "success" | "error"
@@ -93,6 +95,10 @@ const SupportPage: React.FC = () => {
     ],
     [],
   );
+
+  const permission = session?.user?.permissions?.[0]?.toLowerCase();
+  const blockedRoles = ["owner", "finance", "read_only", "analyst"];
+  const isBlocked = Boolean(permission && blockedRoles.includes(permission));
 
   const fetchTickets = useCallback(async () => {
     setTicketsLoading(true);
@@ -140,8 +146,55 @@ const SupportPage: React.FC = () => {
   }, [ticketEndpoints]);
 
   useEffect(() => {
+    if (sessionStatus === "loading" || isBlocked) return;
     void fetchTickets();
-  }, [fetchTickets]);
+  }, [fetchTickets, isBlocked, sessionStatus]);
+
+  if (sessionStatus === "loading") {
+    return <p className="text-white">Loading...</p>;
+  }
+
+  if (isBlocked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-black via-gray-900 to-black px-6">
+        <div className="max-w-md w-full bg-[#1f1f1f]/80 backdrop-blur-lg border border-gray-700 rounded-2xl shadow-2xl p-8 text-center">
+          <div className="flex justify-center mb-6">
+            <div className="w-20 h-20 flex items-center justify-center rounded-full bg-red-500/20">
+              <svg
+                className="w-10 h-10 text-red-500"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M18.364 5.636L5.636 18.364M5.636 5.636l12.728 12.728"
+                />
+              </svg>
+            </div>
+          </div>
+
+          <h1 className="text-2xl font-semibold text-white mb-2">
+            Access Restricted
+          </h1>
+
+          <p className="text-gray-400 mb-6">
+            You don’t have permission to view this page. Please contact your
+            administrator if you believe this is a mistake.
+          </p>
+
+          <button
+            onClick={() => window.history.back()}
+            className="w-full bg-blue-600 hover:bg-blue-700 transition px-5 py-3 rounded-lg font-medium"
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = async () => {
     if (!issue.trim()) {

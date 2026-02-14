@@ -8,6 +8,7 @@ import { userapi } from "@/lib/http/client";
 import axios, { type AxiosResponse } from "axios";
 import { addMonths, format, parseISO, subMonths } from "date-fns";
 import { ChevronLeft, ChevronRight, ExternalLink, Menu } from "lucide-react";
+import { useSession } from "next-auth/react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FcGoogle } from "react-icons/fc";
 import { ToastContainer, toast } from "react-toastify";
@@ -139,6 +140,11 @@ function formatChipNumber(value: number) {
 }
 
 const AgendaIntegrationPage: React.FC = () => {
+  const { data: session } = useSession();
+  const permission = session?.user?.permissions?.[0]?.toLowerCase();
+  const blockedRoles = ["support", "analyst", "read_only"];
+  const isBlocked = Boolean(permission && blockedRoles.includes(permission));
+
   const [date, setDate] = useState<Date | undefined>(() => new Date());
   const [showForm, setShowForm] = useState(false);
 
@@ -865,62 +871,68 @@ const AgendaIntegrationPage: React.FC = () => {
         </div>
 
         {/* Calendar Integration */}
-        <div className="flex items-center justify-between pt-1">
-          <div className="text-xl md:text-2xl font-semibold">
-            Calendar Integration
-          </div>
-          <div className="text-blue-500 text-base md:text-lg font-medium">
-            Auto-sync enabled
-          </div>
-        </div>
-
-        <div className="bg-[#121212] border border-gray-800 rounded-2xl p-4 md:p-6">
-          <div className="bg-[#1C1C1E] rounded-2xl p-4 md:p-6 flex items-center gap-4 md:gap-5">
-            <div className="w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-[#2C2C2E] flex items-center justify-center shrink-0">
-              <FcGoogle className="w-7 h-7 md:w-8 md:h-8" />
+        {!isBlocked && (
+          <>
+            <div className="flex items-center justify-between pt-1">
+              <div className="text-xl md:text-2xl font-semibold">
+                Calendar Integration
+              </div>
+              <div className="text-blue-500 text-base md:text-lg font-medium">
+                Auto-sync enabled
+              </div>
             </div>
-            <div className="flex-1 flex items-center justify-between gap-4">
-              <div>
-                <div className="text-lg md:text-xl font-semibold">
-                  Google Calendar
+
+            <div className="bg-[#121212] border border-gray-800 rounded-2xl p-4 md:p-6">
+              <div className="bg-[#1C1C1E] rounded-2xl p-4 md:p-6 flex items-center gap-4 md:gap-5">
+                <div className="w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-[#2C2C2E] flex items-center justify-center shrink-0">
+                  <FcGoogle className="w-7 h-7 md:w-8 md:h-8" />
                 </div>
-                {googleError ? (
-                  <div className="mt-2 text-sm text-red-200">{googleError}</div>
-                ) : null}
-              </div>
+                <div className="flex-1 flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-lg md:text-xl font-semibold">
+                      Google Calendar
+                    </div>
+                    {googleError ? (
+                      <div className="mt-2 text-sm text-red-200">
+                        {googleError}
+                      </div>
+                    ) : null}
+                  </div>
 
-              <div className="flex items-center gap-3">
-                <span className="text-sm md:text-base text-gray-300">
-                  {googleEnabled ? "On" : "Off"}
-                </span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={googleEnabled}
-                  disabled={googleConnecting}
-                  onClick={() => {
-                    const next = !googleEnabled;
-                    setGoogleEnabled(next);
-                    if (next) void connectGoogleCalendar();
-                  }}
-                  className={
-                    "relative inline-flex h-7 w-12 items-center rounded-full transition-colors " +
-                    (googleEnabled ? "bg-blue-600" : "bg-gray-700") +
-                    (googleConnecting ? " opacity-60" : "")
-                  }
-                  aria-label="Google Calendar"
-                >
-                  <span
-                    className={
-                      "inline-block h-5 w-5 transform rounded-full bg-white transition-transform " +
-                      (googleEnabled ? "translate-x-6" : "translate-x-1")
-                    }
-                  />
-                </button>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm md:text-base text-gray-300">
+                      {googleEnabled ? "On" : "Off"}
+                    </span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={googleEnabled}
+                      disabled={googleConnecting}
+                      onClick={() => {
+                        const next = !googleEnabled;
+                        setGoogleEnabled(next);
+                        if (next) void connectGoogleCalendar();
+                      }}
+                      className={
+                        "relative inline-flex h-7 w-12 items-center rounded-full transition-colors " +
+                        (googleEnabled ? "bg-blue-600" : "bg-gray-700") +
+                        (googleConnecting ? " opacity-60" : "")
+                      }
+                      aria-label="Google Calendar"
+                    >
+                      <span
+                        className={
+                          "inline-block h-5 w-5 transform rounded-full bg-white transition-transform " +
+                          (googleEnabled ? "translate-x-6" : "translate-x-1")
+                        }
+                      />
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
 
         {/* Appointments list (changes when date changes) */}
         <div className="pt-2">

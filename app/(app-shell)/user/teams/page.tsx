@@ -121,7 +121,7 @@ const { data: session, status } = useSession();
 
   const permission = session?.user?.permissions?.[0]?.toLowerCase();
 
-  const blockedRoles = ["support", "finance", "read_only"];
+  const blockedRoles = ["support", "finance", "read_only","analyst"];
 
   if (blockedRoles.includes(permission)) {
     return <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-black via-gray-900 to-black px-6">

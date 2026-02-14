@@ -1,5 +1,6 @@
 "use client";
 import { userApi } from "@/lib/http/client";
+import { useSession } from "next-auth/react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { ToastContainer, toast as toastifyToast } from "react-toastify";
@@ -51,6 +52,11 @@ type ApiSession = {
 };
 
 const SettingsPage: React.FC = () => {
+  const { data: session } = useSession();
+  const permission = session?.user?.permissions?.[0]?.toLowerCase();
+  const blockedRoles = ["analyst"];
+  const isBlocked = Boolean(permission && blockedRoles.includes(permission));
+
   const getStatusCode = useCallback((error: unknown): number | null => {
     if (!error || typeof error !== "object") return null;
     const errObj = error as Record<string, unknown>;
@@ -739,182 +745,188 @@ const SettingsPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-black text-white p-6 space-y-10">
       {/* ================= SUBSCRIPTION ================= */}
-      <section>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-xl font-semibold">Subscription Management</h2>
-          <button
-            type="button"
-            onClick={() => setCustomOfferOpen(true)}
-            className="bg-blue-600 px-4 py-2 rounded-lg text-sm hover:bg-blue-700 active:scale-95 transition"
-          >
-            Request Custom Offer
-          </button>
-        </div>
-
-        <div className="bg-[#272727] rounded-xl p-6 shadow-lg mb-6 border border-gray-700">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div>
-              <p className="text-white font-semibold">Stripe</p>
-              <p className="text-gray-400 text-sm mt-1">
-                Connect Stripe to enable payments and onboarding.
-              </p>
-            </div>
+      {!isBlocked && (
+        <section>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xl font-semibold">Subscription Management</h2>
             <button
               type="button"
-              onClick={handleStripeOnboard}
-              disabled={stripeOnboardLoading || stripeStatusLoading}
-              className={`bg-blue-600 px-4 py-2 rounded-lg text-sm hover:bg-blue-700 active:scale-95 transition ${
-                stripeOnboardLoading || stripeStatusLoading
-                  ? "opacity-70 cursor-not-allowed"
-                  : ""
-              }`}
+              onClick={() => setCustomOfferOpen(true)}
+              className="bg-blue-600 px-4 py-2 rounded-lg text-sm hover:bg-blue-700 active:scale-95 transition"
             >
-              {stripeOnboardLoading
-                ? "Redirecting..."
-                : isStripeConnected
-                  ? "Update"
-                  : "Add Stripe"}
+              Request Custom Offer
             </button>
           </div>
 
-          {stripeOnboardError ? (
-            <div className="mt-4">
-              <p className="text-red-400 font-semibold text-sm">
-                Stripe onboarding failed
-              </p>
-              <p className="text-gray-400 text-sm mt-1">{stripeOnboardError}</p>
-            </div>
-          ) : null}
-        </div>
-
-        {upgradeError ? (
-          <div className="bg-[#272727] rounded-xl p-4 shadow-lg mb-6">
-            <p className="text-red-400 font-semibold text-sm">Upgrade failed</p>
-            <p className="text-gray-400 text-sm mt-1">{upgradeError}</p>
-          </div>
-        ) : null}
-
-        {activeSubscriptionLoading ? (
-          <div className="bg-[#272727] rounded-xl p-6 shadow-lg text-gray-300 mb-6">
-            Checking active subscription...
-          </div>
-        ) : activeSubscriptionError ? (
-          <div className="bg-[#272727] rounded-xl p-6 shadow-lg mb-6">
-            <p className="text-red-400 font-semibold">
-              Failed to load active subscription
-            </p>
-            <p className="text-gray-400 text-sm mt-1">
-              {activeSubscriptionError}
-            </p>
-          </div>
-        ) : activeSubscription ? (
-          <div className="bg-[#272727] rounded-xl p-6 shadow-lg mb-6">
+          <div className="bg-[#272727] rounded-xl p-6 shadow-lg mb-6 border border-gray-700">
             <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex-1 min-w-[200px]">
-                <p className="text-gray-400 text-sm">Current plan</p>
-                <p className="text-white font-semibold">
-                  {activeSubscription.plan_name} •{" "}
-                  {activeSubscription.plan_duration} • $
-                  {activeSubscription.plan_price}
+              <div>
+                <p className="text-white font-semibold">Stripe</p>
+                <p className="text-gray-400 text-sm mt-1">
+                  Connect Stripe to enable payments and onboarding.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleStripeOnboard}
+                disabled={stripeOnboardLoading || stripeStatusLoading}
+                className={`bg-blue-600 px-4 py-2 rounded-lg text-sm hover:bg-blue-700 active:scale-95 transition ${
+                  stripeOnboardLoading || stripeStatusLoading
+                    ? "opacity-70 cursor-not-allowed"
+                    : ""
+                }`}
+              >
+                {stripeOnboardLoading
+                  ? "Redirecting..."
+                  : isStripeConnected
+                    ? "Update"
+                    : "Add Stripe"}
+              </button>
+            </div>
+
+            {stripeOnboardError ? (
+              <div className="mt-4">
+                <p className="text-red-400 font-semibold text-sm">
+                  Stripe onboarding failed
                 </p>
                 <p className="text-gray-400 text-sm mt-1">
-                  {activeSubscription.auto_renew
-                    ? "Auto-renew: On"
-                    : "Auto-renew: Off"}
+                  {stripeOnboardError}
                 </p>
               </div>
-              <div className="text-sm text-gray-300 flex-1 min-w-[200px]">
-                <p>
-                  <span className="text-gray-400">Start:</span>{" "}
-                  {new Date(activeSubscription.start).toLocaleString()}
-                </p>
-                <p>
-                  <span className="text-gray-400">End:</span>{" "}
-                  {new Date(activeSubscription.end).toLocaleString()}
-                </p>
-              </div>
-              <div className="w-full sm:w-auto">
-                <button
-                  type="button"
-                  onClick={handleCancelSubscription}
-                  disabled={cancelLoading}
-                  className={`w-full sm:w-auto bg-red-600/20 text-red-400 border border-red-500/30 px-4 py-2 rounded-lg text-sm hover:bg-red-600/30 active:scale-95 transition ${
-                    cancelLoading ? "opacity-70 cursor-not-allowed" : ""
-                  }`}
-                >
-                  {cancelLoading ? "Canceling..." : "Cancel Subscription"}
-                </button>
+            ) : null}
+          </div>
+
+          {upgradeError ? (
+            <div className="bg-[#272727] rounded-xl p-4 shadow-lg mb-6">
+              <p className="text-red-400 font-semibold text-sm">
+                Upgrade failed
+              </p>
+              <p className="text-gray-400 text-sm mt-1">{upgradeError}</p>
+            </div>
+          ) : null}
+
+          {activeSubscriptionLoading ? (
+            <div className="bg-[#272727] rounded-xl p-6 shadow-lg text-gray-300 mb-6">
+              Checking active subscription...
+            </div>
+          ) : activeSubscriptionError ? (
+            <div className="bg-[#272727] rounded-xl p-6 shadow-lg mb-6">
+              <p className="text-red-400 font-semibold">
+                Failed to load active subscription
+              </p>
+              <p className="text-gray-400 text-sm mt-1">
+                {activeSubscriptionError}
+              </p>
+            </div>
+          ) : activeSubscription ? (
+            <div className="bg-[#272727] rounded-xl p-6 shadow-lg mb-6">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex-1 min-w-[200px]">
+                  <p className="text-gray-400 text-sm">Current plan</p>
+                  <p className="text-white font-semibold">
+                    {activeSubscription.plan_name} •{" "}
+                    {activeSubscription.plan_duration} • $
+                    {activeSubscription.plan_price}
+                  </p>
+                  <p className="text-gray-400 text-sm mt-1">
+                    {activeSubscription.auto_renew
+                      ? "Auto-renew: On"
+                      : "Auto-renew: Off"}
+                  </p>
+                </div>
+                <div className="text-sm text-gray-300 flex-1 min-w-[200px]">
+                  <p>
+                    <span className="text-gray-400">Start:</span>{" "}
+                    {new Date(activeSubscription.start).toLocaleString()}
+                  </p>
+                  <p>
+                    <span className="text-gray-400">End:</span>{" "}
+                    {new Date(activeSubscription.end).toLocaleString()}
+                  </p>
+                </div>
+                <div className="w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={handleCancelSubscription}
+                    disabled={cancelLoading}
+                    className={`w-full sm:w-auto bg-red-600/20 text-red-400 border border-red-500/30 px-4 py-2 rounded-lg text-sm hover:bg-red-600/30 active:scale-95 transition ${
+                      cancelLoading ? "opacity-70 cursor-not-allowed" : ""
+                    }`}
+                  >
+                    {cancelLoading ? "Canceling..." : "Cancel Subscription"}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="bg-[#272727] rounded-xl p-6 shadow-lg text-gray-300 mb-6">
-            No active subscription found.
-          </div>
-        )}
+          ) : (
+            <div className="bg-[#272727] rounded-xl p-6 shadow-lg text-gray-300 mb-6">
+              No active subscription found.
+            </div>
+          )}
 
-        {plansLoading ? (
-          <div className="bg-[#272727] rounded-xl p-6 shadow-lg text-gray-300">
-            Loading plans...
-          </div>
-        ) : plansError ? (
-          <div className="bg-[#272727] rounded-xl p-6 shadow-lg">
-            <p className="text-red-400 font-semibold">Failed to load plans</p>
-            <p className="text-gray-400 text-sm mt-1">{plansError}</p>
-          </div>
-        ) : (
-          <div className="grid md:grid-cols-3 gap-6">
-            {plans.map((plan) => {
-              const planKey = plan.name.trim().toLowerCase();
-              const activeKey = (activePlan ?? "").trim().toLowerCase();
-              const isActive = !!activeKey && planKey === activeKey;
-              const isUpgrading = upgradeLoadingPlanId === plan.id;
+          {plansLoading ? (
+            <div className="bg-[#272727] rounded-xl p-6 shadow-lg text-gray-300">
+              Loading plans...
+            </div>
+          ) : plansError ? (
+            <div className="bg-[#272727] rounded-xl p-6 shadow-lg">
+              <p className="text-red-400 font-semibold">Failed to load plans</p>
+              <p className="text-gray-400 text-sm mt-1">{plansError}</p>
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-3 gap-6">
+              {plans.map((plan) => {
+                const planKey = plan.name.trim().toLowerCase();
+                const activeKey = (activePlan ?? "").trim().toLowerCase();
+                const isActive = !!activeKey && planKey === activeKey;
+                const isUpgrading = upgradeLoadingPlanId === plan.id;
 
-              return (
-                <div
-                  key={plan.id}
-                  className={`bg-[#272727] p-6 rounded-xl border transition-all ${
-                    isActive
-                      ? "border-blue-500 shadow-lg scale-[1.02]"
-                      : "border-gray-700 hover:border-gray-600"
-                  }`}
-                >
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="text-lg font-semibold">{plan.name}</h3>
-                    <p className="text-blue-400 font-semibold">
-                      ${plan.price}/
-                      <span className="text-sm">{plan.duration}</span>
-                    </p>
+                return (
+                  <div
+                    key={plan.id}
+                    className={`bg-[#272727] p-6 rounded-xl border transition-all ${
+                      isActive
+                        ? "border-blue-500 shadow-lg scale-[1.02]"
+                        : "border-gray-700 hover:border-gray-600"
+                    }`}
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                      <h3 className="text-lg font-semibold">{plan.name}</h3>
+                      <p className="text-blue-400 font-semibold">
+                        ${plan.price}/
+                        <span className="text-sm">{plan.duration}</span>
+                      </p>
+                    </div>
+
+                    <ul className="text-gray-300 text-sm space-y-1 mb-5">
+                      <li>• Messages limit: {plan.msg_limit}</li>
+                      <li>• User limit: {plan.user_limit}</li>
+                      <li>• Token limit: {plan.token_limit}</li>
+                    </ul>
+
+                    {isActive ? (
+                      <button className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 active:scale-95 transition cursor-default">
+                        Active Plan
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleUpgradePlan(plan)}
+                        disabled={isUpgrading}
+                        className={`w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 active:scale-95 transition ${
+                          isUpgrading ? "opacity-70 cursor-not-allowed" : ""
+                        }`}
+                      >
+                        {isUpgrading ? "Upgrading..." : "Upgrade Plan"}
+                      </button>
+                    )}
                   </div>
-
-                  <ul className="text-gray-300 text-sm space-y-1 mb-5">
-                    <li>• Messages limit: {plan.msg_limit}</li>
-                    <li>• User limit: {plan.user_limit}</li>
-                    <li>• Token limit: {plan.token_limit}</li>
-                  </ul>
-
-                  {isActive ? (
-                    <button className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 active:scale-95 transition cursor-default">
-                      Active Plan
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleUpgradePlan(plan)}
-                      disabled={isUpgrading}
-                      className={`w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 active:scale-95 transition ${
-                        isUpgrading ? "opacity-70 cursor-not-allowed" : ""
-                      }`}
-                    >
-                      {isUpgrading ? "Upgrading..." : "Upgrade Plan"}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* ================= SECURITY ================= */}
       <section>

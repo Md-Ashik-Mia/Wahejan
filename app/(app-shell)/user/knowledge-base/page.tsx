@@ -2,6 +2,7 @@
 
 import { userapi } from "@/lib/http/client";
 import axios, { type AxiosResponse } from "axios";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import React, { useCallback, useEffect, useState } from "react";
 
@@ -178,6 +179,15 @@ const AIKnowledgeBase: React.FC = () => {
   const [activityLogs, setActivityLogs] = useState<ActivityLogItem[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState<string | null>(null);
+  const { data: session } = useSession();
+  const permission = session?.user?.permissions?.[0]?.toLowerCase();
+  const blockedRoles = ["owner", "finance", "support"];
+  const isBlocked = Boolean(permission && blockedRoles.includes(permission));
+
+  const managementBlockedRoles = ["finance", "analyst", "read_only"];
+  const isManagementBlocked = Boolean(
+    permission && managementBlockedRoles.includes(permission),
+  );
 
   const fetchCategoryCounts = useCallback(async () => {
     setCategoryLoading(true);
@@ -287,103 +297,129 @@ const AIKnowledgeBase: React.FC = () => {
       <h1 className="text-2xl font-bold">AI Knowledge Base</h1>
 
       {/* Knowledge Base Health */}
-      <section className="bg-[#272727] p-6 rounded-2xl flex flex-col md:flex-row justify-between items-center shadow-lg">
-        <div className="flex items-center gap-6">
-          <div className="relative w-24 h-24">
-            <svg className="absolute inset-0 w-full h-full" viewBox="0 0 36 36">
-              <path
-                className="text-gray-700"
-                strokeWidth="4"
-                stroke="currentColor"
-                fill="none"
-                d="M18 2.0845 a15.9155 15.9155 0 0 1 0 31.831 a15.9155 15.9155 0 0 1 0 -31.831"
-              />
-              <path
-                className="text-blue-500"
-                strokeWidth="4"
-                strokeDasharray={`${kbHealth.score}, 100`}
-                strokeLinecap="round"
-                stroke="currentColor"
-                fill="none"
-                d="M18 2.0845 a15.9155 15.9155 0 0 1 0 31.831 a15.9155 15.9155 0 0 1 0 -31.831"
-              />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center text-xl font-semibold">
-              {categoryLoading ? "…" : `${kbHealth.score}%`}
+      {!isManagementBlocked && (
+        <section className="bg-[#272727] p-6 rounded-2xl flex flex-col md:flex-row justify-between items-center shadow-lg">
+          <div className="flex items-center gap-6">
+            <div className="relative w-24 h-24">
+              <svg
+                className="absolute inset-0 w-full h-full"
+                viewBox="0 0 36 36"
+              >
+                <path
+                  className="text-gray-700"
+                  strokeWidth="4"
+                  stroke="currentColor"
+                  fill="none"
+                  d="M18 2.0845 a15.9155 15.9155 0 0 1 0 31.831 a15.9155 15.9155 0 0 1 0 -31.831"
+                />
+                <path
+                  className="text-blue-500"
+                  strokeWidth="4"
+                  strokeDasharray={`${kbHealth.score}, 100`}
+                  strokeLinecap="round"
+                  stroke="currentColor"
+                  fill="none"
+                  d="M18 2.0845 a15.9155 15.9155 0 0 1 0 31.831 a15.9155 15.9155 0 0 1 0 -31.831"
+                />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center text-xl font-semibold">
+                {categoryLoading ? "…" : `${kbHealth.score}%`}
+              </div>
             </div>
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold">Knowledge Base Health</h3>
-            <p className="text-gray-400">
-              {categoryLoading
-                ? "Loading knowledge base health…"
-                : kbHealth.summary
-                ? kbHealth.summary
-                : `Your AI knowledge is ${kbHealth.score}% complete. Add missing information to improve customer interactions.`}
-            </p>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {!categoryLoading && kbHealth.missingTopics.length > 0
-                ? kbHealth.missingTopics.map((topic, idx) => (
-                    <span key={`${topic}-${idx}`} className="bg-red-700 px-3 py-1 rounded-full text-sm">
-                      {topic}
-                    </span>
-                  ))
-                : null}
-            </div>
+            <div>
+              <h3 className="text-lg font-semibold">Knowledge Base Health</h3>
+              <p className="text-gray-400">
+                {categoryLoading
+                  ? "Loading knowledge base health…"
+                  : kbHealth.summary
+                    ? kbHealth.summary
+                    : `Your AI knowledge is ${kbHealth.score}% complete. Add missing information to improve customer interactions.`}
+              </p>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {!categoryLoading && kbHealth.missingTopics.length > 0
+                  ? kbHealth.missingTopics.map((topic, idx) => (
+                      <span
+                        key={`${topic}-${idx}`}
+                        className="bg-red-700 px-3 py-1 rounded-full text-sm"
+                      >
+                        {topic}
+                      </span>
+                    ))
+                  : null}
+              </div>
 
-            {categoryError ? (
-              <p className="text-sm text-red-400 mt-2">{categoryError}</p>
-            ) : null}
+              {categoryError ? (
+                <p className="text-sm text-red-400 mt-2">{categoryError}</p>
+              ) : null}
+            </div>
           </div>
-        </div>
-         <Link href="/user/ai-assistant#knowledge-base">
-        <button className="bg-blue-600 px-4 py-2 rounded-lg mt-4 md:mt-0">+ Add Missing Info</button>
-        </Link>
-      </section>
+          <Link href="/user/ai-assistant#knowledge-base">
+            <button className="bg-blue-600 px-4 py-2 rounded-lg mt-4 md:mt-0">
+              + Add Missing Info
+            </button>
+          </Link>
+        </section>
+      )}
 
       {/* Knowledge Categories */}
-      <section>
-        <h2 className="text-lg font-semibold bg-blue-600 px-4 py-2 rounded-t-lg">Knowledge Categories</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 bg-black p-4 rounded-b-lg">
-          {categoryError ? (
-            <p className="text-sm text-red-400">{categoryError}</p>
-          ) : (
-            categories.map((cat, idx) => (
-              <div key={idx} className="bg-[#272727] rounded-xl p-6 flex flex-col items-center justify-center shadow-md hover:bg-gray-700 transition">
-                <div className="text-4xl mb-2">{cat.icon}</div>
-                <h3 className="font-semibold">{cat.name}</h3>
-                <p className="text-gray-400 text-sm">{categoryLoading ? "Loading..." : `${cat.items} items`}</p>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
+      {!isManagementBlocked && (
+        <section>
+          <h2 className="text-lg font-semibold bg-blue-600 px-4 py-2 rounded-t-lg">
+            Knowledge Categories
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 bg-black p-4 rounded-b-lg">
+            {categoryError ? (
+              <p className="text-sm text-red-400">{categoryError}</p>
+            ) : (
+              categories.map((cat, idx) => (
+                <div
+                  key={idx}
+                  className="bg-[#272727] rounded-xl p-6 flex flex-col items-center justify-center shadow-md hover:bg-gray-700 transition"
+                >
+                  <div className="text-4xl mb-2">{cat.icon}</div>
+                  <h3 className="font-semibold">{cat.name}</h3>
+                  <p className="text-gray-400 text-sm">
+                    {categoryLoading ? "Loading..." : `${cat.items} items`}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Activity Log */}
-      <section>
-        <h2 className="text-lg font-semibold bg-blue-600 px-4 py-2 rounded-t-lg">Activity Log</h2>
-        <div className="bg-[#272727] p-6 rounded-b-lg space-y-4">
-          {activityError ? (
-            <p className="text-sm text-red-400">{activityError}</p>
-          ) : activityLoading ? (
-            <p className="text-sm text-gray-400">Loading activity...</p>
-          ) : activityLogs.length === 0 ? (
-            <p className="text-sm text-gray-400">No activity yet.</p>
-          ) : (
-            activityLogs.map((log) => (
-              <div key={log.id} className="border-b border-gray-700 pb-3">
-                <h4 className="font-semibold flex items-center gap-2">
-                  {activityEmoji(log.icon, log.activity_type)} {log.title || log.model_name || "Activity"}
-                </h4>
-                {log.description ? (
-                  <p className="text-gray-300 text-sm">{log.description}</p>
-                ) : null}
-                <p className="text-gray-500 text-xs">{formatActivityTimestamp(log.timestamp)}</p>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
+      {!isBlocked && (
+        <section>
+          <h2 className="text-lg font-semibold bg-blue-600 px-4 py-2 rounded-t-lg">
+            Activity Log
+          </h2>
+          <div className="bg-[#272727] p-6 rounded-b-lg space-y-4">
+            {activityError ? (
+              <p className="text-sm text-red-400">{activityError}</p>
+            ) : activityLoading ? (
+              <p className="text-sm text-gray-400">Loading activity...</p>
+            ) : activityLogs.length === 0 ? (
+              <p className="text-sm text-gray-400">No activity yet.</p>
+            ) : (
+              activityLogs.map((log) => (
+                <div key={log.id} className="border-b border-gray-700 pb-3">
+                  <h4 className="font-semibold flex items-center gap-2">
+                    {activityEmoji(log.icon, log.activity_type)}{" "}
+                    {log.title || log.model_name || "Activity"}
+                  </h4>
+                  {log.description ? (
+                    <p className="text-gray-300 text-sm">{log.description}</p>
+                  ) : null}
+                  <p className="text-gray-500 text-xs">
+                    {formatActivityTimestamp(log.timestamp)}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+      )}
 
 
     </div>

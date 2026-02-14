@@ -2,6 +2,7 @@
 
 import { userapi } from "@/lib/http/client";
 import axios from "axios";
+import { useSession } from "next-auth/react";
 import React, { useCallback, useEffect, useState } from "react";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -138,6 +139,12 @@ function getPlatformLabel(platform: Platform): string {
 }
 
 const IntegrationPage: React.FC = () => {
+  const { data: session } = useSession();
+  const permission = session?.user?.permissions?.[0]?.toLowerCase();
+  const managementBlockedRoles = ["finance", "analyst", "read_only"];
+  const isManagementBlocked = Boolean(
+    permission && managementBlockedRoles.includes(permission),
+  );
   const [statusByPlatform, setStatusByPlatform] = useState<
     Record<
       Platform,
@@ -306,94 +313,102 @@ const IntegrationPage: React.FC = () => {
     <div className="min-h-screen bg-black text-white p-8">
       <ToastContainer position="top-right" autoClose={2500} theme="dark" />
       <h1 className="text-2xl font-bold mb-6">Integrations</h1>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-        {INTEGRATIONS.map((integration) => {
-          const status = statusByPlatform[integration.platform];
-          const connected = status?.connected ?? false;
-          const active = status?.active ?? false;
-          const loading = status?.loading ?? false;
-          const err = status?.error ?? null;
-          const connectDisabled = false;
-          const toggleDisabled = false;
+      {!isManagementBlocked ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+          {INTEGRATIONS.map((integration) => {
+            const status = statusByPlatform[integration.platform];
+            const connected = status?.connected ?? false;
+            const active = status?.active ?? false;
+            const loading = status?.loading ?? false;
+            const err = status?.error ?? null;
+            const connectDisabled = false;
+            const toggleDisabled = false;
 
-          const showNotConnected = !connected || err === NOT_ACTIVE_SENTINEL;
-          const statusText = showNotConnected
-            ? "Platform is not connected"
-            : err
-              ? err
-              : active
-                ? "Connected"
-                : "Disconnected";
+            const showNotConnected = !connected || err === NOT_ACTIVE_SENTINEL;
+            const statusText = showNotConnected
+              ? "Platform is not connected"
+              : err
+                ? err
+                : active
+                  ? "Connected"
+                  : "Disconnected";
 
-          return (
-            <div
-              key={integration.platform}
-              className="bg-[#272727] rounded-xl p-5 flex flex-col justify-between shadow-lg hover:bg-gray-700 transition"
-            >
-              <div>
-                <h2 className="text-lg font-semibold mb-1">
-                  {integration.name}
-                </h2>
-                <p className="text-gray-400 text-sm mb-4">{integration.desc}</p>
-                {statusText ? (
-                  <p
-                    className={`${showNotConnected ? "text-gray-400" : "text-red-400"} text-xs mb-3`}
-                  >
-                    {statusText}
+            return (
+              <div
+                key={integration.platform}
+                className="bg-[#272727] rounded-xl p-5 flex flex-col justify-between shadow-lg hover:bg-gray-700 transition"
+              >
+                <div>
+                  <h2 className="text-lg font-semibold mb-1">
+                    {integration.name}
+                  </h2>
+                  <p className="text-gray-400 text-sm mb-4">
+                    {integration.desc}
                   </p>
-                ) : null}
-                <button
-                  type="button"
-                  disabled={connectDisabled || loading}
-                  className={`px-4 py-2 text-sm rounded-md font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed ${
-                    connectDisabled
-                      ? "bg-gray-700 text-gray-300"
-                      : "bg-blue-600 hover:bg-blue-700 text-white"
-                  }`}
-                  onClick={() => {
-                    if (connectDisabled) return;
-                    // Always allow opening the OAuth flow.
-                    // When already connected, this acts as "Update".
-                    setStatus(integration.platform, {
-                      loading: true,
-                      error: null,
-                    });
-                    void connectAndRedirect(integration.platform)
-                      .catch((e: unknown) => {
-                        setStatus(integration.platform, {
-                          error: getApiErrorMessage(e, "Failed to connect"),
-                        });
-                      })
-                      .finally(() =>
-                        setStatus(integration.platform, { loading: false }),
-                      );
-                  }}
-                >
-                  {loading ? "Working..." : connected ? "Update" : "Connect"}
-                </button>
-              </div>
-
-              {/* Toggle Switch */}
-              {connected && (
-                <div className="flex justify-end mt-4">
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={active}
-                      disabled={toggleDisabled || loading}
-                      onChange={() =>
-                        void handleToggle(integration.platform, !active)
-                      }
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                  </label>
+                  {statusText ? (
+                    <p
+                      className={`${showNotConnected ? "text-gray-400" : "text-red-400"} text-xs mb-3`}
+                    >
+                      {statusText}
+                    </p>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={connectDisabled || loading}
+                    className={`px-4 py-2 text-sm rounded-md font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed ${
+                      connectDisabled
+                        ? "bg-gray-700 text-gray-300"
+                        : "bg-blue-600 hover:bg-blue-700 text-white"
+                    }`}
+                    onClick={() => {
+                      if (connectDisabled) return;
+                      // Always allow opening the OAuth flow.
+                      // When already connected, this acts as "Update".
+                      setStatus(integration.platform, {
+                        loading: true,
+                        error: null,
+                      });
+                      void connectAndRedirect(integration.platform)
+                        .catch((e: unknown) => {
+                          setStatus(integration.platform, {
+                            error: getApiErrorMessage(e, "Failed to connect"),
+                          });
+                        })
+                        .finally(() =>
+                          setStatus(integration.platform, { loading: false }),
+                        );
+                    }}
+                  >
+                    {loading ? "Working..." : connected ? "Update" : "Connect"}
+                  </button>
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+
+                {/* Toggle Switch */}
+                {connected && (
+                  <div className="flex justify-end mt-4">
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={active}
+                        disabled={toggleDisabled || loading}
+                        onChange={() =>
+                          void handleToggle(integration.platform, !active)
+                        }
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-gray-400">
+          You do not have permission to manage integrations.
+        </p>
+      )}
     </div>
   );
 };

@@ -140,12 +140,13 @@
 
 import { userapi } from "@/lib/http/client";
 import axios from "axios";
+import { useSession } from "next-auth/react";
 import React, {
-  FormEvent,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
+    FormEvent,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from "react";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -549,6 +550,16 @@ function knowledgeBaseDetailEndpoint(id: number) {
 }
 
 const AIAssistantDashboard: React.FC = () => {
+  const { data: session } = useSession();
+  const permission = session?.user?.permissions?.[0]?.toLowerCase();
+  const blockedRoles = ["support", "analyst", "read_only"];
+  const isBlocked = Boolean(permission && blockedRoles.includes(permission));
+
+  const managementBlockedRoles = ["finance", "analyst", "read_only"];
+  const isManagementBlocked = Boolean(
+    permission && managementBlockedRoles.includes(permission),
+  );
+
   /* ─────────────────────────────────────
      Company state
   ───────────────────────────────────── */
@@ -1267,8 +1278,9 @@ const AIAssistantDashboard: React.FC = () => {
     <div className="min-h-screen bg-black text-white p-6 space-y-8">
       <ToastContainer position="top-right" autoClose={2500} theme="dark" />
       {/* Company Info & Opening Hours & Location */}
-      <section className="bg-[#272727] rounded-2xl p-6 shadow-lg space-y-6">
-        <h2 className="text-xl font-semibold">AI Assistant</h2>
+      {!isBlocked && (
+        <section className="bg-[#272727] rounded-2xl p-6 shadow-lg space-y-6">
+          <h2 className="text-xl font-semibold">AI Assistant</h2>
 
         {/* Basic company info */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1503,10 +1515,14 @@ const AIAssistantDashboard: React.FC = () => {
           </form>
         </div>
       </section>
+    )}
 
       {/* Prices & Services */}
-      <section className="bg-[#272727] rounded-2xl p-6 shadow-lg space-y-4">
-        <h2 className="text-xl font-semibold">Prices & Services (Optional)</h2>
+      {!isBlocked && (
+        <section className="bg-[#272727] rounded-2xl p-6 shadow-lg space-y-4">
+          <h2 className="text-xl font-semibold">
+            Prices & Services (Optional)
+          </h2>
 
         {servicesError ? (
           <p className="text-sm text-red-400">{servicesError}</p>
@@ -1660,208 +1676,215 @@ const AIAssistantDashboard: React.FC = () => {
           </button>
         </form>
       </section>
+    )}
 
       {/* Tone & Training */}
-      <section className="bg-[#272727] rounded-2xl p-6 shadow-lg grid md:grid-cols-2 gap-6">
-        {/* Tone */}
-        <div>
-          <h3 className="font-semibold mb-2">Tone & Personality</h3>
-          <p className="text-sm text-gray-300">
-            Choose how the AI speaks for your brand.
-          </p>
-          <select
-            className="bg-gray-900 p-3 rounded-lg w-full mt-3"
-            value={tonePreset}
-            onChange={(e) => handleTonePresetChange(e.target.value)}
-            disabled={toneSaving || companyLoading}
-          >
-            {/* '',
+      {!isManagementBlocked && (
+        <section className="bg-[#272727] rounded-2xl p-6 shadow-lg grid md:grid-cols-2 gap-6">
+          {/* Tone */}
+          <div>
+            <h3 className="font-semibold mb-2">Tone & Personality</h3>
+            <p className="text-sm text-gray-300">
+              Choose how the AI speaks for your brand.
+            </p>
+            <select
+              className="bg-gray-900 p-3 rounded-lg w-full mt-3"
+              value={tonePreset}
+              onChange={(e) => handleTonePresetChange(e.target.value)}
+              disabled={toneSaving || companyLoading}
+            >
+              {/* '',
   '',
   '',
   '',
   '', */}
-            <option value="Formal">Formal</option>
-            <option value="standard">Standard</option>
-            <option value="friendly">Friendly</option>
-            <option value="polite">Polite</option>
-            <option value="Humorous">Humorous</option>
-          </select>
-        </div>
-
-        {/* Train AI */}
-        <div>
-          <h3 className="font-semibold mb-2">Train AI</h3>
-          <p className="text-sm text-gray-300">
-            Upload files to train your assistant.
-          </p>
-
-          <div
-            onClick={handleFileClick}
-            onDragOver={handleDragOverFiles}
-            onDrop={handleDropFiles}
-            className="mt-3 border-2 border-dashed border-gray-900 rounded-xl p-6 cursor-pointer hover:bg-gray-900/40"
-          >
-            <div className="text-center">
-              <p className="font-medium">Drag files here, or click to browse</p>
-              <p className="text-gray-400 text-sm mt-2">
-                Supports PDF, DOCX, CSV (max 10MB each)
-              </p>
-              {trainingUploading && (
-                <p className="text-gray-400 text-sm mt-2">Uploading...</p>
-              )}
-              {trainingError && (
-                <p className="text-red-400 text-sm mt-2">{trainingError}</p>
-              )}
-            </div>
+              <option value="Formal">Formal</option>
+              <option value="standard">Standard</option>
+              <option value="friendly">Friendly</option>
+              <option value="polite">Polite</option>
+              <option value="Humorous">Humorous</option>
+            </select>
           </div>
 
-          <input
-            type="file"
-            multiple
-            ref={fileInputRef}
-            onChange={handleFilesSelected}
-            accept=".pdf,.doc,.docx,.csv"
-            className="hidden"
-          />
+          {/* Train AI */}
+          <div>
+            <h3 className="font-semibold mb-2">Train AI</h3>
+            <p className="text-sm text-gray-300">
+              Upload files to train your assistant.
+            </p>
 
-          <div className="mt-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-gray-200">
-                Uploaded files
-              </p>
-              <p className="text-xs text-gray-400">{trainingFiles.length}</p>
-            </div>
-
-            {trainingFilesError && (
-              <p className="text-sm text-red-400 mt-2">{trainingFilesError}</p>
-            )}
-
-            <div className="mt-3 rounded-xl bg-gray-900">
-              {trainingFilesLoading ? (
-                <p className="text-sm text-gray-400 p-4">Loading...</p>
-              ) : trainingFiles.length === 0 ? (
-                <p className="text-sm text-gray-400 p-4">
-                  No files uploaded yet.
+            <div
+              onClick={handleFileClick}
+              onDragOver={handleDragOverFiles}
+              onDrop={handleDropFiles}
+              className="mt-3 border-2 border-dashed border-gray-900 rounded-xl p-6 cursor-pointer hover:bg-gray-900/40"
+            >
+              <div className="text-center">
+                <p className="font-medium">Drag files here, or click to browse</p>
+                <p className="text-gray-400 text-sm mt-2">
+                  Supports PDF, DOCX, CSV (max 10MB each)
                 </p>
-              ) : (
-                <div className="max-h-56 overflow-y-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead className="sticky top-0 bg-gray-900">
-                      <tr className="text-gray-400 border-b border-gray-800">
-                        <th className="py-2 px-3">File</th>
-                        <th className="py-2 px-3 whitespace-nowrap">
-                          Uploaded
-                        </th>
-                        <th className="py-2 px-3 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {trainingFiles.map((tf) => (
-                        <tr key={tf.id} className="border-b border-gray-800">
-                          <td className="py-2 px-3">
-                            <p
-                              className="text-gray-200 truncate"
-                              title={tf.file}
-                            >
-                              {filenameFromPath(tf.file)}
-                            </p>
-                          </td>
-                          <td className="py-2 px-3 whitespace-nowrap text-gray-400">
-                            {tf.uploaded_at
-                              ? new Date(tf.uploaded_at).toLocaleDateString()
-                              : "—"}
-                          </td>
-                          <td className="py-2 px-3">
-                            <div className="flex justify-end">
-                              <button
-                                type="button"
-                                disabled={trainingFileDeletingId === tf.id}
-                                onClick={() => handleDeleteTrainingFile(tf.id)}
-                                className="text-xs bg-red-600 px-3 py-1 rounded-lg"
-                              >
-                                {trainingFileDeletingId === tf.id
-                                  ? "Deleting..."
-                                  : "Delete"}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                {trainingUploading && (
+                  <p className="text-gray-400 text-sm mt-2">Uploading...</p>
+                )}
+                {trainingError && (
+                  <p className="text-red-400 text-sm mt-2">{trainingError}</p>
+                )}
+              </div>
+            </div>
+
+            <input
+              type="file"
+              multiple
+              ref={fileInputRef}
+              onChange={handleFilesSelected}
+              accept=".pdf,.doc,.docx,.csv"
+              className="hidden"
+            />
+
+            <div className="mt-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-gray-200">
+                  Uploaded files
+                </p>
+                <p className="text-xs text-gray-400">{trainingFiles.length}</p>
+              </div>
+
+              {trainingFilesError && (
+                <p className="text-sm text-red-400 mt-2">{trainingFilesError}</p>
               )}
+
+              <div className="mt-3 rounded-xl bg-gray-900">
+                {trainingFilesLoading ? (
+                  <p className="text-sm text-gray-400 p-4">Loading...</p>
+                ) : trainingFiles.length === 0 ? (
+                  <p className="text-sm text-gray-400 p-4">
+                    No files uploaded yet.
+                  </p>
+                ) : (
+                  <div className="max-h-56 overflow-y-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="sticky top-0 bg-gray-900">
+                        <tr className="text-gray-400 border-b border-gray-800">
+                          <th className="py-2 px-3">File</th>
+                          <th className="py-2 px-3 whitespace-nowrap">
+                            Uploaded
+                          </th>
+                          <th className="py-2 px-3 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {trainingFiles.map((tf) => (
+                          <tr key={tf.id} className="border-b border-gray-800">
+                            <td className="py-2 px-3">
+                              <p
+                                className="text-gray-200 truncate"
+                                title={tf.file}
+                              >
+                                {filenameFromPath(tf.file)}
+                              </p>
+                            </td>
+                            <td className="py-2 px-3 whitespace-nowrap text-gray-400">
+                              {tf.uploaded_at
+                                ? new Date(tf.uploaded_at).toLocaleDateString()
+                                : "—"}
+                            </td>
+                            <td className="py-2 px-3">
+                              <div className="flex justify-end">
+                                <button
+                                  type="button"
+                                  disabled={trainingFileDeletingId === tf.id}
+                                  onClick={() => handleDeleteTrainingFile(tf.id)}
+                                  className="text-xs bg-red-600 px-3 py-1 rounded-lg"
+                                >
+                                  {trainingFileDeletingId === tf.id
+                                    ? "Deleting..."
+                                    : "Delete"}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Knowledge Base */}
-      <section
-        id="knowledge-base"
-        className="bg-[#272727] rounded-2xl p-6 shadow-lg space-y-4"
-      >
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold mb-2">AI Assistant Knowledge Base</h3>
-          <button
-            className="bg-blue-600 px-4 py-2 rounded-lg"
-            onClick={openNewTopicModal}
-            disabled={topicsLoading}
-          >
-            + Add New Topic
-          </button>
-        </div>
+      {!isManagementBlocked && (
+        <section
+          id="knowledge-base"
+          className="bg-[#272727] rounded-2xl p-6 shadow-lg space-y-4"
+        >
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold mb-2">AI Assistant Knowledge Base</h3>
+            <button
+              className="bg-blue-600 px-4 py-2 rounded-lg"
+              onClick={openNewTopicModal}
+              disabled={topicsLoading}
+            >
+              + Add New Topic
+            </button>
+          </div>
 
-        {topicsError && <p className="text-sm text-red-400">{topicsError}</p>}
+          {topicsError && <p className="text-sm text-red-400">{topicsError}</p>}
 
-        <div className="space-y-3">
-          {topicsLoading ? (
-            <p className="text-sm text-gray-400">Loading topics...</p>
-          ) : (
-            topics.map((topic) => (
-              <div
-                key={topic.id}
-                className="bg-gray-900 p-4 rounded-xl flex justify-between items-start gap-4"
-              >
-                <div>
-                  <h4 className="font-semibold">{topic.title}</h4>
-                  <p className="text-gray-400 text-sm mt-1">
-                    {topic.description}
-                  </p>
-                  <p className="text-gray-500 text-xs mt-1">
-                    Added:{" "}
-                    {topic.createdAt
-                      ? new Date(topic.createdAt).toLocaleDateString()
-                      : "—"}
-                  </p>
+          <div className="space-y-3">
+            {topicsLoading ? (
+              <p className="text-sm text-gray-400">Loading topics...</p>
+            ) : (
+              topics.map((topic) => (
+                <div
+                  key={topic.id}
+                  className="bg-gray-900 p-4 rounded-xl flex justify-between items-start gap-4"
+                >
+                  <div>
+                    <h4 className="font-semibold">{topic.title}</h4>
+                    <p className="text-gray-400 text-sm mt-1">
+                      {topic.description}
+                    </p>
+                    <p className="text-gray-500 text-xs mt-1">
+                      Added:{" "}
+                      {topic.createdAt
+                        ? new Date(topic.createdAt).toLocaleDateString()
+                        : "—"}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      className="bg-blue-500 px-3 py-1 rounded-lg text-xs disabled:opacity-60"
+                      onClick={() => openEditTopicModal(topic)}
+                      disabled={topicSaving || topicDeletingId === topic.id}
+                    >
+                      ✏️ Edit
+                    </button>
+                    <button
+                      className="bg-red-600 px-3 py-1 rounded-lg text-xs disabled:opacity-60"
+                      onClick={() => handleTopicDelete(topic.id)}
+                      disabled={topicDeletingId === topic.id}
+                    >
+                      {topicDeletingId === topic.id
+                        ? "Deleting..."
+                        : "🗑️ Delete"}
+                    </button>
+                  </div>
                 </div>
-                <div className="flex shrink-0 gap-2">
-                  <button
-                    className="bg-blue-500 px-3 py-1 rounded-lg text-xs disabled:opacity-60"
-                    onClick={() => openEditTopicModal(topic)}
-                    disabled={topicSaving || topicDeletingId === topic.id}
-                  >
-                    ✏️ Edit
-                  </button>
-                  <button
-                    className="bg-red-600 px-3 py-1 rounded-lg text-xs disabled:opacity-60"
-                    onClick={() => handleTopicDelete(topic.id)}
-                    disabled={topicDeletingId === topic.id}
-                  >
-                    {topicDeletingId === topic.id ? "Deleting..." : "🗑️ Delete"}
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
+              ))
+            )}
 
-          {topics.length === 0 && (
-            <p className="text-sm text-gray-400">
-              No topics yet. Click &quot;Add New Topic&quot; to get started.
-            </p>
-          )}
-        </div>
-      </section>
+            {topics.length === 0 && (
+              <p className="text-sm text-gray-400">
+                No topics yet. Click &quot;Add New Topic&quot; to get started.
+              </p>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Modal for Knowledge base topic */}
       {isKbModalOpen && (
