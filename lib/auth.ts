@@ -224,13 +224,20 @@ function deriveNEXTAUTH_URL(): string | undefined {
 }
 
 const derivedUrl = deriveNEXTAUTH_URL();
-if (derivedUrl && (!process.env.NEXTAUTH_URL || process.env.NEXTAUTH_URL.includes("localhost"))) {
-  process.env.NEXTAUTH_URL = derivedUrl;
+const finalNextAuthUrl =
+  derivedUrl &&
+    (!process.env.NEXTAUTH_URL || process.env.NEXTAUTH_URL.includes("localhost"))
+    ? derivedUrl
+    : process.env.NEXTAUTH_URL;
+
+if (finalNextAuthUrl) {
+  process.env.NEXTAUTH_URL = finalNextAuthUrl;
 }
 
 export const authOptions: NextAuthOptions = {
   // Force secret and secure cookies for AWS Amplify Production
-  secret: process.env.NEXTAUTH_SECRET,
+  // Use NEXTAUTH_SECRET as primary, fallback to AUTH_SECRET (standard for some providers)
+  secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET,
   useSecureCookies: process.env.NODE_ENV === "production",
   providers: [
     // 1) Email + password (Python backend)
