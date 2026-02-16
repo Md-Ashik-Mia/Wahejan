@@ -1,0 +1,21 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - npm ci
+    build:
+      commands:
+        - npm run build
+  artifacts:
+    baseDirectory: .next
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - node_modules/**/*
+      - .next/cache/**/*
+
+# Note: Amplify sometimes supports redirects here in Gen 2 / certain configurations.
+# However, for Gen 1 hosting, if the console UI is broken, these files help ensure
+# a clean build environment which often resolves "Server-side exception" errors.
