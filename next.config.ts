@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* Amplify Gen 1 handles SSR output automatically; 'standalone' is usually for Docker/Vercel */
+  output: 'standalone',
+  /* Amplify Gen 1 handles SSR output automatically */
   eslint: {
     ignoreDuringBuilds: true,
   },

@@ -127,7 +127,7 @@ export default withAuth(
     pages: {
       signIn: "/login",
     },
-    secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET,
+    secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "dev-secret-keep-it-safe",
   },
 );
 

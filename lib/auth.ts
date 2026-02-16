@@ -317,17 +317,22 @@ export const authOptions: NextAuthOptions = {
     }),
 
     // 2) Google OAuth -> exchange Google access_token with your backend
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      authorization: {
-        params: {
-          prompt: "consent",
-          access_type: "offline",
-          response_type: "code",
-        },
-      },
-    }),
+    // 2) Google OAuth
+    ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+      ? [
+        GoogleProvider({
+          clientId: process.env.GOOGLE_CLIENT_ID,
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+          authorization: {
+            params: {
+              prompt: "consent",
+              access_type: "offline",
+              response_type: "code",
+            },
+          },
+        }),
+      ]
+      : []),
 
     // 3) Apple OAuth (optional)
     ...(process.env.APPLE_CLIENT_ID && process.env.APPLE_CLIENT_SECRET
