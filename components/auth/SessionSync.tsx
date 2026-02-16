@@ -9,7 +9,10 @@ export function SessionSync() {
   useEffect(() => {
     if ((session as any)?.error === "RefreshAccessTokenError") {
         if (typeof window !== "undefined") {
-            window.location.href = "/api/auth/signout?callbackUrl=/login";
+            const path = window.location.pathname;
+            if (path !== "/login" && path !== "/policy") {
+                window.location.href = "/api/auth/signout?callbackUrl=/login";
+            }
         }
         return;
     }

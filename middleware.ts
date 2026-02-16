@@ -77,19 +77,10 @@ export default withAuth(
       return NextResponse.redirect(new URL("/unauthorized", req.url));
     }
 
-    // User section must be a real "user" or "employee".
-    if (path.startsWith("/user") && role !== "user" && role !== "employee") {
+    // User section must NOT be admin and MUST have some role.
+    if (path.startsWith("/user")) {
       if (!role) return NextResponse.redirect(new URL("/login", req.url));
-      if (role === "admin")
-        return NextResponse.redirect(new URL("/admin/dashboard", req.url));
-      if (process.env.NODE_ENV !== "production") {
-        console.log("[middleware] deny user route", {
-          path,
-          role,
-          tokenKeys: token ? Object.keys(token) : [],
-        });
-      }
-      return NextResponse.redirect(new URL("/unauthorized", req.url));
+      if (role === "admin") return NextResponse.redirect(new URL("/admin/dashboard", req.url));
     }
 
     // Force Privacy Policy acceptance for all user pages.

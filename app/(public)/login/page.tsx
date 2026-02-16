@@ -217,7 +217,10 @@ export default function LoginPage() {
       const session = await waitForSessionReady();
       if (cancelled) return;
       if (session?.user?.role && session?.accessToken) {
-        applySessionAndRedirect(session);
+        // Small delay to allow cookies to settle
+        setTimeout(() => {
+          if (!cancelled) applySessionAndRedirect(session);
+        }, 300);
       }
     })();
     return () => {
