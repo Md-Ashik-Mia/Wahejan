@@ -20,7 +20,11 @@ type AppUser = {
 };
 
 function normalizeRole(role: unknown): string {
-  return typeof role === "string" ? role.trim().toLowerCase() : "";
+  if (typeof role === "string") return role.trim().toLowerCase();
+  if (Array.isArray(role) && role.length > 0 && typeof role[0] === "string") {
+    return role[0].trim().toLowerCase();
+  }
+  return "";
 }
 
 function isTrue(value: unknown): boolean {
@@ -31,16 +35,16 @@ function deriveRoleFromBackendUser(user: unknown): string {
   if (!user || typeof user !== "object") return "";
   const u = user as Record<string, unknown>;
 
-  // Prefer explicit role strings.
-  const rawRole = normalizeRole(u.role);
+  // Check 'role' (string or array) or 'roles' (array)
+  const rawRole = normalizeRole(u.role) || normalizeRole(u.roles);
   if (rawRole) {
-    // Common synonyms
     if (rawRole === "administrator" || rawRole === "superadmin" || rawRole === "super_admin") return "admin";
     return rawRole;
   }
 
   // Fallback to common Django/DRF style flags.
   if (isTrue(u.is_admin) || isTrue(u.is_staff) || isTrue(u.is_superuser)) return "admin";
+  if (isTrue(u.is_employee)) return "employee";
 
   return "";
 }

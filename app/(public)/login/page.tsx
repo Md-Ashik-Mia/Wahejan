@@ -192,17 +192,22 @@ export default function LoginPage() {
 
     if (role === "admin") {
       router.replace("/admin/dashboard");
+      // Fallback if router hangs
+      setTimeout(() => { window.location.href = "/admin/dashboard"; }, 500);
       return;
     }
 
     // If it's any valid role other than admin, send to user dashboard
     if (role) {
       router.replace("/user/dashboard");
+      // Fallback if router hangs
+      setTimeout(() => { window.location.href = "/user/dashboard"; }, 500);
       return;
     }
 
     // Fallback if no role is found
     router.replace("/");
+    setTimeout(() => { window.location.href = "/"; }, 500);
   };
 
   // If user comes back here after Google OAuth, session already exists.
