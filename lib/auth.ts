@@ -209,35 +209,29 @@ function deriveNEXTAUTH_URL(): string | undefined {
 
   const envUrl = process.env.NEXTAUTH_URL;
 
-  // If we are in production but NEXTAUTH_URL is localhost or missing, it's a configuration error.
-  // We try to fallback to common cloud provider variables.
+  // In Next.js 15+, we shouldn't modify process.env at runtime.
+  // Instead, we return the calculated value to be used in authOptions.
   if (process.env.NODE_ENV === "production") {
     if (!envUrl || envUrl.includes("localhost")) {
-      // Amplify / Vercel often provide the host in these variables
-      const host = process.env.VERCEL_URL || process.env.HOSTNAME || process.env.DOMAIN_NAME;
+      // Amplify often provides the host in these variables
+      const host = process.env.VERCEL_URL || process.env.HOSTNAME || process.env.DOMAIN_NAME || process.env.AWS_BRANCH;
       if (host) {
-        return `https://${host}`;
+        return host.startsWith("http") ? host : `https://${host}`;
       }
     }
   }
   return envUrl;
 }
 
-const derivedUrl = deriveNEXTAUTH_URL();
-const finalNextAuthUrl =
-  derivedUrl &&
-    (!process.env.NEXTAUTH_URL || process.env.NEXTAUTH_URL.includes("localhost"))
-    ? derivedUrl
-    : process.env.NEXTAUTH_URL;
-
-if (finalNextAuthUrl) {
-  process.env.NEXTAUTH_URL = finalNextAuthUrl;
-}
+const finalNextAuthUrl = deriveNEXTAUTH_URL();
 
 export const authOptions: NextAuthOptions = {
-  // Force secret and secure cookies for AWS Amplify Production
-  // Use NEXTAUTH_SECRET as primary, fallback to AUTH_SECRET (standard for some providers)
-  secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET,
+  // Use computed NEXTAUTH_URL if we're on the server
+  ...(finalNextAuthUrl ? { nextAuthUrl: finalNextAuthUrl } : {}),
+
+  // Primary secret from env, fallback to a hardcoded string ONLY if in development
+  // In production, we MUST have a secret or NextAuth will crash the server component render.
+  secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || (process.env.NODE_ENV === "development" ? "dev-secret-keep-it-safe" : undefined),
   useSecureCookies: process.env.NODE_ENV === "production",
   providers: [
     // 1) Email + password (Python backend)
