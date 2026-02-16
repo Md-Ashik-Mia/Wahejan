@@ -194,14 +194,15 @@ export default function LoginPage() {
       router.replace("/admin/dashboard");
       return;
     }
-    if (role === "user" || role === "employee") {
+
+    // If it's any valid role other than admin, send to user dashboard
+    if (role) {
       router.replace("/user/dashboard");
       return;
     }
 
-    // If we got here, the session is not usable for routing.
-    // Avoid redirect loops (common when NEXTAUTH_SECRET/NEXTAUTH_URL are misconfigured in prod).
-    throw new Error("SESSION_NOT_READY");
+    // Fallback if no role is found
+    router.replace("/");
   };
 
   // If user comes back here after Google OAuth, session already exists.

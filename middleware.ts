@@ -94,9 +94,9 @@ export default withAuth(
 
     // Force Privacy Policy acceptance for all user pages.
     // If the cookie isn't set, redirect to the public /policy page.
-    if (path.startsWith("/user")) {
+    if (path.startsWith("/user") && path !== "/user/dashboard") {
       const accepted = req.cookies.get("policy_accepted")?.value === "true";
-      if (!accepted) {
+      if (!accepted && !path.startsWith("/policy")) {
         return NextResponse.redirect(new URL("/policy", req.url));
       }
     }

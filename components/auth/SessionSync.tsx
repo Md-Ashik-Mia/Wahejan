@@ -14,8 +14,13 @@ export function SessionSync() {
         return;
     }
 
-    if (session?.accessToken) {
-      if (typeof window !== "undefined") {
+    if (typeof window !== "undefined") {
+      const accepted = localStorage.getItem("policy_accepted") === "true";
+      if (accepted) {
+        document.cookie = "policy_accepted=true; path=/; max-age=31536000; SameSite=Lax";
+      }
+
+      if (session?.accessToken) {
         localStorage.setItem("access_token", session.accessToken as string);
         if (session.refreshToken) {
             localStorage.setItem("refresh_token", session.refreshToken as string);
