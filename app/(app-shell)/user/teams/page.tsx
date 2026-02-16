@@ -1,85 +1,110 @@
 "use client";
-import React, { useState } from "react";
-import { useSession } from "next-auth/react"
+import { userApi } from "@/lib/http/client";
+import { useSession } from "next-auth/react";
+import React, { useCallback, useEffect, useState } from "react";
+import toast from "react-hot-toast";
 
 interface User {
   id: number;
-  name: string;
   email: string;
-  company: string;
-  role: string;
+  roles: string[];
+  permissions?: string[];
+  name?: string; // Fallback or derived
+  company?: string; // Fallback or derived
 }
 
 const TeamPage: React.FC = () => {
-  // ===========================
-  // 🔹 FAKE DATA (Simulating API Response)
-  // ===========================
-  const fakeUsers: User[] = [
-    { id: 1, name: "Jane Cooper", email: "felicia.reid@example.com", company: "TechVerse Inc", role: "Owner" },
-    { id: 2, name: "Wade Warren", email: "sara.cruz@example.com", company: "TechVerse Inc", role: "Support" },
-    { id: 3, name: "Jenny Wilson", email: "nathan.roberts@example.com", company: "TechVerse Inc", role: "Owner" },
-    { id: 4, name: "Guy Hawkins", email: "jackson.graham@example.com", company: "TechVerse Inc", role: "Finance" },
-  ];
-
-  const roles = ["Owner", "Finance", "Support", "Analyst", "Read-only"];
+  const roles = ["owner", "finance", "support", "analyst", "read_only"];
 
   // ===========================
   // 🔹 STATE
   // ===========================
-  const [users, setUsers] = useState<User[]>(fakeUsers);
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState("Owner");
+  const [inviteRole, setInviteRole] = useState("finance");
+  const [inviteLoading, setInviteLoading] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
   // ===========================
-  // 🔹 Simulated Data Fetch (Replace with API)
+  // 🔹 Fetch Employees
   // ===========================
-  /*
-  useEffect(() => {
-    async function fetchTeam() {
-      try {
-        const res = await fetch("/api/team", { method: "GET" });
-        if (res.ok) {
-          const data = await res.json();
-          setUsers(data);
-        } else {
-          setUsers(fakeUsers); // fallback
-        }
-      } catch {
-        setUsers(fakeUsers); // fallback
+  const fetchTeam = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const res = await userApi.get("/auth/company/employee/");
+      if (res.data && res.data.employees) {
+        setUsers(res.data.employees);
       }
+    } catch (error) {
+      console.error("Error fetching team:", error);
+      toast.error("Failed to load team members.");
+    } finally {
+      if (!silent) setLoading(false);
     }
-    fetchTeam();
   }, []);
-  */
+
+  useEffect(() => {
+    fetchTeam();
+  }, [fetchTeam]);
 
   // ===========================
   // 🔹 Invite Handler
   // ===========================
-  const handleInvite = () => {
-    if (!inviteEmail.trim()) return alert("Please enter an email address.");
+  const handleInvite = async () => {
+    if (!inviteEmail.trim()) {
+      toast.error("Please enter an email address.");
+      return;
+    }
 
-    const newUser: User = {
-      id: Date.now(),
-      name: inviteEmail.split("@")[0].replace(/\./g, " "),
-      email: inviteEmail,
-      company: "TechVerse Inc",
-      role: inviteRole,
-    };
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(inviteEmail.trim())) {
+      toast.error("Please enter a valid email address.");
+      return;
+    }
 
-    setUsers((prev) => [...prev, newUser]);
-    setInviteEmail("");
+    setInviteLoading(true);
+    const toastId = toast.loading("Sending invitation...");
 
-    // TODO: POST /api/team/invite
+    try {
+      await userApi.post("/auth/company/employee/", {
+        email: inviteEmail.trim(),
+        roles: [inviteRole],
+      });
+
+      toast.success("Invitation sent successfully!", { id: toastId });
+      setInviteEmail("");
+      setInviteRole("finance");
+      fetchTeam(true); // Refresh list
+    } catch (error: any) {
+      console.error("Error sending invitation:", error);
+      const errorMessage =
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to send invitation.";
+      toast.error(errorMessage, { id: toastId });
+    } finally {
+      setInviteLoading(false);
+    }
   };
 
   // ===========================
   // 🔹 Role Update Handler
   // ===========================
-  const handleRoleUpdate = (id: number, newRole: string) => {
-    setUsers((prev) => prev.map((user) => (user.id === id ? { ...user, role: newRole } : user)));
-    // TODO: PATCH /api/team/update-role
+  const handleRoleUpdate = async (id: number, newRole: string) => {
+    const toastId = toast.loading("Updating permissions...");
+    try {
+      await userApi.post(`/auth/company/employee/update-permissions/${id}/`, {
+        roles: [newRole],
+      });
+      toast.success("Permissions updated successfully!", { id: toastId });
+      fetchTeam(true); // Refresh list
+    } catch (error: any) {
+      console.error("Error updating role:", error);
+      toast.error("Failed to update permissions.", { id: toastId });
+    }
   };
 
   // ===========================
@@ -90,27 +115,35 @@ const TeamPage: React.FC = () => {
     setShowDeleteModal(true);
   };
 
-  const handleDelete = () => {
-    if (userToDelete) {
-      setUsers((prev) => prev.filter((u) => u.id !== userToDelete.id));
-      // TODO: DELETE /api/team/:id
+  const handleDelete = async () => {
+    if (!userToDelete) return;
+
+    const toastId = toast.loading("Deleting employee...");
+    try {
+      await userApi.delete(`/auth/company/employee/update-permissions/${userToDelete.id}/`);
+      toast.success("Employee deleted successfully!", { id: toastId });
+      fetchTeam(true); // Refresh list
+    } catch (error: any) {
+      console.error("Error deleting employee:", error);
+      toast.error("Failed to delete employee.", { id: toastId });
+    } finally {
+      setShowDeleteModal(false);
+      setUserToDelete(null);
     }
-    setShowDeleteModal(false);
-    setUserToDelete(null);
   };
 
   // ===========================
   // 🔹 RBAC Table Data
   // ===========================
   const permissions = [
-    { name: "View Dashboard", roles: ["Owner", "Finance", "Support", "Analyst", "Read-only"] },
-    { name: "Manage Users", roles: ["Owner"] },
-    { name: "Financial Data", roles: ["Owner", "Finance"] },
-    { name: "Customer Support", roles: ["Support"] },
-    { name: "Billing & Invoices", roles: ["Owner", "Finance"] },
-    { name: "Analytics & Reports", roles: ["Owner", "Analyst"] },
-    { name: "System Settings", roles: ["Owner"] },
-    { name: "API Management", roles: ["Owner"] },
+    { name: "View Dashboard", roles: ["owner", "finance", "support", "analyst", "read_only"] },
+    { name: "Manage Users", roles: ["owner"] },
+    { name: "Financial Data", roles: ["owner", "finance", "analyst", "read_only"] },
+    { name: "Customer Support", roles: ["support"] },
+    { name: "Billing & Invoices", roles: ["owner", "finance", "support", "read_only"] },
+    { name: "Analytics & Reports", roles: ["analyst", "read_only"] },
+    { name: "System Settings", roles: ["owner", "finance"] },
+    { name: "API Management", roles: ["owner", "support"] },
   ];
 
 const { data: session, status } = useSession();
@@ -176,22 +209,25 @@ return (
             placeholder="Email address here"
             value={inviteEmail}
             onChange={(e) => setInviteEmail(e.target.value)}
-            className="flex-1 bg-gray-700 p-3 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={inviteLoading}
+            className="flex-1 bg-gray-700 p-3 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           />
           <select
             value={inviteRole}
             onChange={(e) => setInviteRole(e.target.value)}
-            className="bg-gray-700 text-white p-3 rounded-lg focus:ring-2 focus:ring-blue-500"
+            disabled={inviteLoading}
+            className="bg-gray-700 text-white p-3 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed capitalize"
           >
             {roles.map((r) => (
-              <option key={r}>{r}</option>
+              <option key={r} value={r} className="capitalize">{r.replace(/_/g, " ")}</option>
             ))}
           </select>
           <button
             onClick={handleInvite}
-            className="bg-blue-600 px-5 py-2 rounded-lg hover:bg-blue-700 active:scale-95 transition"
+            disabled={inviteLoading}
+            className="bg-blue-600 px-5 py-2 rounded-lg hover:bg-blue-700 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600"
           >
-            Invite
+            {inviteLoading ? "Sending..." : "Invite"}
           </button>
         </div>
       </section>
@@ -205,8 +241,8 @@ return (
               <tr className="border-b border-gray-700 text-gray-400">
                 <th className="p-3">Permission</th>
                 {roles.map((role) => (
-                  <th key={role} className="p-3 text-center">
-                    {role}
+                  <th key={role} className="p-3 text-center capitalize">
+                    {role.replace(/_/g, " ")}
                   </th>
                 ))}
               </tr>
@@ -242,42 +278,46 @@ return (
                 <th className="p-3">Email</th>
                 <th className="p-3">Company</th>
                 <th className="p-3">Role</th>
-                <th className="p-3 text-center">Action</th>
                 <th className="p-3 text-center">Delete</th>
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
-                <tr key={user.id} className="border-b border-gray-700 hover:bg-gray-700/40 transition">
-                  <td className="p-3">{user.name}</td>
-                  <td className="p-3 text-gray-300">{user.email}</td>
-                  <td className="p-3 text-gray-300">{user.company}</td>
-                  <td className="p-3">
-                    <select
-                      value={user.role}
-                      onChange={(e) => handleRoleUpdate(user.id, e.target.value)}
-                      className="bg-gray-700 text-white p-2 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    >
-                      {roles.map((r) => (
-                        <option key={r}>{r}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="p-3 text-center">
-                    <button className="bg-blue-600 px-4 py-1 rounded-lg text-sm hover:bg-blue-700 active:scale-95 transition">
-                      Update
-                    </button>
-                  </td>
-                  <td className="p-3 text-center">
-                    <button
-                      onClick={() => confirmDelete(user)}
-                      className="bg-red-600 px-3 py-1 rounded-lg text-sm hover:bg-red-700 active:scale-95 transition"
-                    >
-                      Delete
-                    </button>
-                  </td>
+              {loading ? (
+                <tr>
+                  <td colSpan={5} className="p-10 text-center text-gray-400">Loading team members...</td>
                 </tr>
-              ))}
+              ) : users.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-10 text-center text-gray-400">No team members found.</td>
+                </tr>
+              ) : (
+                users.map((user) => (
+                  <tr key={user.id} className="border-b border-gray-700 hover:bg-gray-700/40 transition">
+                    <td className="p-3 capitalize">{user.name || user.email.split("@")[0].replace(/\./g, " ")}</td>
+                    <td className="p-3 text-gray-300">{user.email}</td>
+                    <td className="p-3 text-gray-300">{user.company || "VerseAI Inc"}</td>
+                    <td className="p-3">
+                      <select
+                        value={user.roles[0]}
+                        onChange={(e) => handleRoleUpdate(user.id, e.target.value)}
+                        className="bg-gray-700 text-white p-2 rounded-lg focus:ring-2 focus:ring-blue-500 capitalize"
+                      >
+                        {roles.map((r) => (
+                          <option key={r} value={r}>{r.replace(/_/g, " ")}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="p-3 text-center">
+                      <button
+                        onClick={() => confirmDelete(user)}
+                        className="bg-red-600 px-3 py-1 rounded-lg text-sm hover:bg-red-700 active:scale-95 transition"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
