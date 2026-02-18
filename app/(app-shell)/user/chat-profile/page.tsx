@@ -211,6 +211,8 @@ export default function ChatProfilePage() {
                 : null;
               const items = (q.data ?? []) as ChatProfileItem[];
 
+              if (!loading && !error && items.length === 0) return null;
+
               return (
                 <section
                   key={platform}
@@ -263,43 +265,48 @@ export default function ChatProfilePage() {
                                   </span>
                                 </div>
                               </div>
-                              {(() => {
-                                const key = `${platform}:${p.id}`;
-                                const subscribing = Boolean(
-                                  subscribingByKey[key],
-                                );
-                                const message = subscribeMessageByKey[key];
-                                const subscribed = message === "Subscribed";
+                                {(() => {
+                                  const key = `${platform}:${p.id}`;
+                                  const subscribing = Boolean(
+                                    subscribingByKey[key],
+                                  );
+                                  const message = subscribeMessageByKey[key];
+                                  const subscribed = message === "Subscribed";
+                                  const isInstaOrWA = platform === "instagram" || platform === "whatsapp";
 
-                                return (
-                                  <div className="flex flex-col items-end gap-2">
-                                    <button
-                                      type="button"
-                                      disabled={subscribing || subscribed}
-                                      className={
-                                        "px-3 py-1.5 text-xs rounded-md font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed " +
-                                        (subscribed
-                                          ? "bg-green-600/20 text-green-200 border border-green-600/30"
-                                          : "bg-blue-600 hover:bg-blue-700 text-white")
-                                      }
-                                      onClick={() =>
-                                        handleSubscribe(platform, p.id)
-                                      }
-                                    >
-                                      {subscribed
-                                        ? "Subscribed"
-                                        : subscribing
-                                          ? "Subscribing…"
-                                          : "Subscribe"}
-                                    </button>
-                                    {message && message !== "Subscribed" ? (
-                                      <div className="text-[11px] text-red-400 max-w-[180px] text-right">
-                                        {message}
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                );
-                              })()}
+                                  return (
+                                    <div className="flex flex-col items-end gap-2">
+                                      <button
+                                        type="button"
+                                        disabled={subscribing || subscribed}
+                                        className={
+                                          "px-3 py-1.5 text-xs rounded-md font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed " +
+                                          (subscribed
+                                            ? "bg-green-600/20 text-green-200 border border-green-600/30"
+                                            : "bg-blue-600 hover:bg-blue-700 text-white")
+                                        }
+                                        onClick={() => {
+                                          if (isInstaOrWA) {
+                                            router.push("/user/integrations");
+                                          } else {
+                                            handleSubscribe(platform, p.id);
+                                          }
+                                        }}
+                                      >
+                                        {subscribed
+                                          ? "Subscribed"
+                                          : subscribing
+                                            ? "Subscribing…"
+                                            : isInstaOrWA ? "Ok" : "Subscribe"}
+                                      </button>
+                                      {message && message !== "Subscribed" ? (
+                                        <div className="text-[11px] text-red-400 max-w-[180px] text-right">
+                                          {message}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  );
+                                })()}
                             </div>
                           </div>
                         ))}

@@ -3,6 +3,7 @@
 import { userapi } from "@/lib/http/client";
 import axios from "axios";
 import { useSession } from "next-auth/react";
+import Link from "next/link";
 import React, { useCallback, useEffect, useState } from "react";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -312,7 +313,15 @@ const IntegrationPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-black text-white p-8">
       <ToastContainer position="top-right" autoClose={2500} theme="dark" />
-      <h1 className="text-2xl font-bold mb-6">Integrations</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Integrations</h1>
+        <Link
+          href="/user/chat-profile"
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-semibold transition flex items-center gap-2"
+        >
+          View Profiles
+        </Link>
+      </div>
       {!isManagementBlocked ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
           {INTEGRATIONS.map((integration) => {
