@@ -184,6 +184,8 @@ export default function LoginPage() {
     const role = session?.user?.role?.trim().toLowerCase();
     const hasPlan = session?.user?.hasPlan;
 
+    console.log("[Login] Applying session and redirecting", { role, hasPlan });
+
     const accessToken = session?.accessToken;
     const refreshToken = session?.refreshToken;
 
@@ -191,23 +193,32 @@ export default function LoginPage() {
     if (refreshToken) localStorage.setItem("refresh_token", refreshToken);
 
     if (role === "admin") {
+      console.log("[Login] Redirecting to admin dashboard");
       router.replace("/admin/dashboard");
       // Fallback if router hangs
-      setTimeout(() => { window.location.href = "/admin/dashboard"; }, 500);
+      setTimeout(() => {
+        console.log("[Login] Fallback: window.location to admin");
+        window.location.href = "/admin/dashboard";
+      }, 800);
       return;
     }
 
     // If it's any valid role other than admin, send to user dashboard
     if (role) {
+      console.log("[Login] Redirecting to user dashboard");
       router.replace("/user/dashboard");
       // Fallback if router hangs
-      setTimeout(() => { window.location.href = "/user/dashboard"; }, 500);
+      setTimeout(() => {
+        console.log("[Login] Fallback: window.location to user");
+        window.location.href = "/user/dashboard";
+      }, 800);
       return;
     }
 
     // Fallback if no role is found
+    console.log("[Login] No role found, redirecting to home");
     router.replace("/");
-    setTimeout(() => { window.location.href = "/"; }, 500);
+    setTimeout(() => { window.location.href = "/"; }, 800);
   };
 
   // If user comes back here after Google OAuth, session already exists.
@@ -282,7 +293,7 @@ export default function LoginPage() {
 
       if (!role || !accessToken) {
         toast.error(
-          "Login succeeded but session is missing (role/access token). On Vercel this usually means NEXTAUTH_SECRET or NEXTAUTH_URL is not set correctly. Check Vercel → Project → Settings → Environment Variables.",
+          "Login succeeded but session is missing (role/access token). This usually means NEXTAUTH_SECRET or NEXTAUTH_URL is not set correctly in your environment (Amplify/Vercel). Ensure NEXTAUTH_URL matches your production domain.",
         );
         setIsLoggingIn(false);
         return;

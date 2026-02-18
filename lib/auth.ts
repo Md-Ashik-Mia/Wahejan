@@ -32,7 +32,10 @@ function isTrue(value: unknown): boolean {
 }
 
 function deriveRoleFromBackendUser(user: unknown): string {
-  if (!user || typeof user !== "object") return "";
+  if (!user || typeof user !== "object") {
+    console.log("[auth] deriveRoleFromBackendUser: invalid user object", user);
+    return "";
+  }
   const u = user as Record<string, unknown>;
 
   // Check 'role' (string or array) or 'roles' (array)
@@ -46,6 +49,7 @@ function deriveRoleFromBackendUser(user: unknown): string {
   if (isTrue(u.is_admin) || isTrue(u.is_staff) || isTrue(u.is_superuser)) return "admin";
   if (isTrue(u.is_employee)) return "employee";
 
+  console.log("[auth] deriveRoleFromBackendUser: no role found in", Object.keys(u));
   return "";
 }
 
@@ -222,6 +226,7 @@ export const authOptions: NextAuthOptions = {
     // RESTORED: Your original JWT callback with all custom fields and refresh logic
     async jwt({ token, user, account }) {
       if (user) {
+        console.log("[auth] JWT callback: initial sign in", { email: user.email });
         const u = user as unknown as Partial<AppUser>;
         token.role = normalizeRole(u.role);
         token.hasPlan = Boolean(u.hasPlan);

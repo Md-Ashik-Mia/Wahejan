@@ -113,12 +113,19 @@ export default withAuth(
   {
     callbacks: {
       // if there is NO token → redirect to signIn page (/login)
-      authorized: ({ token }) => !!token,
+      authorized: ({ token, req }) => {
+        const hasToken = !!token;
+        if (!hasToken) {
+          console.log("[middleware] No token found for", req.nextUrl.pathname);
+        }
+        return hasToken;
+      },
     },
     pages: {
       signIn: "/login",
     },
-    secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "dev-secret-keep-it-safe",
+    // Use the same fallback as lib/auth.ts to ensure consistency if env vars are missing
+    secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "fallback-secret-for-prod",
   },
 );
 
