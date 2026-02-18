@@ -50,13 +50,28 @@ function normalizeRole(role: unknown): string {
 export default withAuth(
   function middleware(req: NextRequestWithAuth) {
     const token = req.nextauth.token as AppJWT | null;
-    // Some setups may nest custom fields differently; be defensive.
-    const role = normalizeRole(
-      (token as unknown as { role?: unknown })?.role ??
-      (token as unknown as { user?: { role?: unknown } })?.user?.role,
-    );
+
+    // Debugging Amplify/Production session issues
+    if (process.env.NODE_ENV === "production" || true) {
+      console.log("[middleware] Request path:", req.nextUrl.pathname, {
+        hasToken: !!token,
+        tokenKeys: token ? Object.keys(token) : [],
+      });
+    }
+
+    const rawRole = (token as unknown as { role?: unknown })?.role ??
+      (token as unknown as { user?: { role?: unknown } })?.user?.role;
+
+    const role = normalizeRole(rawRole);
     const hasPlan = token?.hasPlan;
     const path = req.nextUrl.pathname;
+
+    if (token && !role) {
+      console.warn("[middleware] Token found but role is missing/empty", {
+        tokenRole: (token as any).role,
+        tokenUserRole: (token as any).user?.role
+      });
+    }
 
     // Admin-only area
     if (path.startsWith("/admin") && role !== "admin") {

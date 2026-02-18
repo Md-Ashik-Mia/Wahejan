@@ -224,13 +224,30 @@ export default function LoginPage() {
   // If user comes back here after Google OAuth, session already exists.
   useEffect(() => {
     let cancelled = false;
+
+    // Safety check: if we've redirected more than twice in 10 seconds, stop.
+    // This prevents the infinite "reloading" loop if middleware keeps bouncing us back.
+    const lastRedirect = sessionStorage.getItem("last_login_redirect");
+    const redirectCount = parseInt(sessionStorage.getItem("login_redirect_count") || "0");
+    const now = Date.now();
+
+    if (lastRedirect && (now - parseInt(lastRedirect) < 10000) && redirectCount > 2) {
+      console.warn("[Login] Loop detected. Staying on login page to prevent crash.");
+      setIsLoggingIn(false);
+      return;
+    }
+
     (async () => {
       const session = await waitForSessionReady();
       if (cancelled) return;
       if (session?.user?.role && session?.accessToken) {
         // Small delay to allow cookies to settle
         setTimeout(() => {
-          if (!cancelled) applySessionAndRedirect(session);
+          if (!cancelled) {
+            sessionStorage.setItem("last_login_redirect", now.toString());
+            sessionStorage.setItem("login_redirect_count", (redirectCount + 1).toString());
+            applySessionAndRedirect(session);
+          }
         }, 300);
       }
     })();

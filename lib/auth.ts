@@ -95,18 +95,7 @@ function tryParseClientUserAgent(rawClientInfo: string): string | null {
 
 function deriveNEXTAUTH_URL(): string | undefined {
   if (typeof window !== "undefined") return undefined; // Server only
-
-  const envUrl = process.env.NEXTAUTH_URL;
-
-  if (process.env.NODE_ENV === "production") {
-    if (!envUrl || envUrl.includes("localhost")) {
-      const host = process.env.VERCEL_URL || process.env.HOSTNAME || process.env.DOMAIN_NAME || process.env.AWS_BRANCH;
-      if (host) {
-        return host.startsWith("http") ? host : `https://${host}`;
-      }
-    }
-  }
-  return envUrl;
+  return process.env.NEXTAUTH_URL;
 }
 
 const finalNextAuthUrl = deriveNEXTAUTH_URL();

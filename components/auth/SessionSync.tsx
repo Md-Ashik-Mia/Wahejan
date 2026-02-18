@@ -28,6 +28,9 @@ export function SessionSync() {
         if (session.refreshToken) {
             localStorage.setItem("refresh_token", session.refreshToken as string);
         }
+        // Clear the redirect loop counter on successful sync
+        sessionStorage.removeItem("login_redirect_count");
+        sessionStorage.removeItem("last_login_redirect");
       }
     }
   }, [session]);
