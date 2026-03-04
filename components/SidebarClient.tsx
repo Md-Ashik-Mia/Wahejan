@@ -196,11 +196,11 @@
 
 import { adminNav } from "@/components/nav/adminNav";
 import { userNav } from "@/components/nav/userNav";
+import { signOut, useSession } from "next-auth/react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { FaRegArrowAltCircleRight } from "react-icons/fa";
-import { signOut, useSession } from "next-auth/react";
 
 type Role = "admin" | "user" | null;
 
@@ -221,7 +221,8 @@ export default function SidebarClient() {
       localStorage.removeItem("access_token");
       localStorage.removeItem("refresh_token");
     }
-    await signOut({ callbackUrl: "/login" });
+    // Sign out using NextAuth (this handles cookies and local state)
+    await signOut({ callbackUrl: "/login", redirect: true });
   }
 
   return (

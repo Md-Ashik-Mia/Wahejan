@@ -10,9 +10,12 @@
 
 import { NextResponse } from "next/server";
 
-export async function POST() {
-  // Create a response that redirects to /login
-  const res = NextResponse.redirect(new URL("/login", process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"));
+export async function POST(req: Request) {
+  // Use the request origin to stay on the same domain (Amplify vs Localhost)
+  const url = new URL(req.url);
+  const origin = url.origin;
+
+  const res = NextResponse.redirect(new URL("/login", origin));
 
   // Clear the cookie
   res.cookies.set("role", "", { path: "/", maxAge: 0 });
