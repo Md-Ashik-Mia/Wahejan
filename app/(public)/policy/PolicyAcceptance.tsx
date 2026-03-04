@@ -4,8 +4,9 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
 function setCookie(name: string, value: string, maxAgeSeconds: number) {
-  // Lax is fine for first-party auth-like gating.
-  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAgeSeconds}; samesite=lax`;
+  const isProd = typeof window !== "undefined" && window.location.protocol === "https:";
+  const secure = isProd ? "; Secure" : "";
+  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAgeSeconds}; samesite=lax${secure}`;
 }
 
 export default function PolicyAcceptance() {

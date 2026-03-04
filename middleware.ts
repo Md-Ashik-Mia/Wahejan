@@ -60,10 +60,9 @@ export async function middleware(req: NextRequest) {
     // Note: Cookies on Amplify might need 'SameSite=Lax'.
     const accepted = req.cookies.get("policy_accepted")?.value === "true";
 
-    // We don't force policy on the dashboard itself to allow first-time sync,
-    // but we enforce it on every other subfolder.
-    if (!accepted && pathname !== "/user/dashboard" && !pathname.startsWith("/policy")) {
-      console.log("[Middleware] Policy not accepted, redirecting to /policy");
+    // Force Privacy Policy check on ALL user pages.
+    if (!accepted && !pathname.startsWith("/policy")) {
+      console.log("[Middleware] Policy not accepted, forcing redirect to /policy");
       return NextResponse.redirect(new URL("/policy", req.url));
     }
   }
