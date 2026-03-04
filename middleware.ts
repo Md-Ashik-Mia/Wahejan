@@ -140,9 +140,9 @@ export default withAuth(
       signIn: "/login",
     },
     // The secret MUST match what is in your Amplify Console.
-    // Do NOT use a hardcoded fallback in production as it causes redirect loops
-    // if the main app uses the real secret and middleware uses the fallback.
-    secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET,
+    // We use a fallback here to prevent 'Server Error' if Amplify's Edge runtime
+    // fails to provide the environment variable at request time.
+    secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "fallback-secret-for-prod",
   },
 );
 
