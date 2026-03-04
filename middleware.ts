@@ -98,9 +98,9 @@ export default withAuth(
       if (role === "admin") return NextResponse.redirect(new URL("/admin/dashboard", req.url));
     }
 
-    // Force Privacy Policy acceptance for all user pages.
+    // Force Privacy Policy acceptance for all user pages (including dashboard).
     // If the cookie isn't set, redirect to the public /policy page.
-    if (path.startsWith("/user") && path !== "/user/dashboard") {
+    if (path.startsWith("/user")) {
       const accepted = req.cookies.get("policy_accepted")?.value === "true";
       if (!accepted && !path.startsWith("/policy")) {
         return NextResponse.redirect(new URL("/policy", req.url));
