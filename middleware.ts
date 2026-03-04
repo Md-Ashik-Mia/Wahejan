@@ -1,41 +1,6 @@
-// import type { NextRequest } from "next/server";
-// import { NextResponse } from "next/server";
-
-// export function middleware(req: NextRequest) {
-//   const role = req.cookies.get("role")?.value;
-//   const { pathname } = req.nextUrl;
-
-//   // Home → smart redirect
-//   if (pathname === "/") {
-//     if (role === "admin") return NextResponse.redirect(new URL("/admin/dashboard", req.url));
-//     if (role === "user")  return NextResponse.redirect(new URL("/user/dashboard",  req.url));
-//     return NextResponse.redirect(new URL("/login", req.url));
-//   }
-
-//   // Public pages
-//   if (pathname === "/login" || pathname === "/signup") {
-//     if (role === "admin") return NextResponse.redirect(new URL("/admin/dashboard", req.url));
-//     if (role === "user")  return NextResponse.redirect(new URL("/user/dashboard",  req.url));
-//     return NextResponse.next();
-//   }
-
-//   // Zones
-//   if (pathname.startsWith("/admin") && role !== "admin") {
-//     return NextResponse.redirect(new URL("/user/dashboard", req.url));
-//   }
-//   if (pathname.startsWith("/user") && !role) {
-//     return NextResponse.redirect(new URL("/login", req.url));
-//   }
-
-//   return NextResponse.next();
-// }
-
-// export const config = {
-//   matcher: ["/", "/login", "/signup", "/admin/:path*", "/user/:path*"],
-// };
-
 import type { JWT } from "next-auth/jwt";
-import { withAuth, type NextRequestWithAuth } from "next-auth/middleware";
+import { getToken } from "next-auth/jwt";
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 type AppJWT = JWT & {
@@ -43,109 +8,78 @@ type AppJWT = JWT & {
   hasPlan?: boolean;
 };
 
+// Use the same secret for both App and Middleware
+const SECRET = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "fallback-secret-for-prod";
+
 function normalizeRole(role: unknown): string {
   return typeof role === "string" ? role.trim().toLowerCase() : "";
 }
 
-export default withAuth(
-  function middleware(req: NextRequestWithAuth) {
-    const token = req.nextauth.token as AppJWT | null;
+/**
+ * Next.js Middleware with explicit support for AWS Amplify Edge environment.
+ * We manually handle getToken to ensure decryption works even when environment
+ * variables are strictly scoped.
+ */
+export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
 
-    // Debugging Amplify/Production session issues
-    if (process.env.NODE_ENV === "production" || true) {
-      console.log("[middleware] Request path:", req.nextUrl.pathname, {
-        hasToken: !!token,
-        tokenKeys: token ? Object.keys(token) : [],
-      });
+  // 1. Identify valid session using getToken (more reliable on AWS Amplify than withAuth wrapper)
+  // Secure cookies are used automatically on HTTPS (Amplify Production)
+  const token = (await getToken({
+    req,
+    secret: SECRET,
+    secureCookie: process.env.NODE_ENV === "production" || pathname.startsWith("https"),
+  })) as AppJWT | null;
+
+  const rawRole = (token as any)?.role ?? (token as any)?.user?.role;
+  const role = normalizeRole(rawRole);
+  const hasPlan = token?.hasPlan;
+
+  // 2. Admin Protection
+  if (pathname.startsWith("/admin")) {
+    if (!token) return NextResponse.redirect(new URL("/login", req.url));
+    if (role !== "admin") return NextResponse.redirect(new URL("/unauthorized", req.url));
+  }
+
+  // 3. User Protection (/user/* routes)
+  if (pathname.startsWith("/user")) {
+    // If no token, redirect to login
+    if (!token) {
+      console.log("[Middleware] No token found for user path, redirecting to /login");
+      return NextResponse.redirect(new URL(`/login?callbackUrl=${encodeURIComponent(pathname)}`, req.url));
     }
 
-    const rawRole = (token as unknown as { role?: unknown })?.role ??
-      (token as unknown as { user?: { role?: unknown } })?.user?.role;
-
-    const role = normalizeRole(rawRole);
-    const hasPlan = token?.hasPlan;
-    const path = req.nextUrl.pathname;
-
-    if (token && !role) {
-      console.warn("[middleware] Token found but role is missing/empty", {
-        tokenRole: (token as any).role,
-        tokenUserRole: (token as any).user?.role
-      });
+    // A. Role check (Internal protection)
+    // If we have a token but role hasn't synced yet, allow it (let client-side handle it)
+    // to avoid the infinite login loop on Amplify.
+    if (role === "admin") {
+      return NextResponse.redirect(new URL("/admin/dashboard", req.url));
     }
 
-    // Admin-only area
-    if (path.startsWith("/admin") && role !== "admin") {
-      // Sometimes right after sign-in the token exists but custom fields
-      // (like role) haven't propagated yet on the first edge request.
-      // In that case, bounce through home which server-redirects by session.
-      if (!role) {
-        return NextResponse.redirect(new URL("/", req.url));
-      }
-      if (process.env.NODE_ENV !== "production") {
-        // Avoid logging secrets; just enough to debug role mismatches.
-        console.log("[middleware] deny admin route", {
-          path,
-          role,
-          tokenKeys: token ? Object.keys(token) : [],
-        });
-      }
-      return NextResponse.redirect(new URL("/unauthorized", req.url));
+    // B. Privacy Policy Check (The "Gate")
+    // Note: Cookies on Amplify might need 'SameSite=Lax'.
+    const accepted = req.cookies.get("policy_accepted")?.value === "true";
+
+    // We don't force policy on the dashboard itself to allow first-time sync,
+    // but we enforce it on every other subfolder.
+    if (!accepted && pathname !== "/user/dashboard" && !pathname.startsWith("/policy")) {
+      console.log("[Middleware] Policy not accepted, redirecting to /policy");
+      return NextResponse.redirect(new URL("/policy", req.url));
     }
+  }
 
-    // User section must NOT be admin and MUST have some role.
-    if (path.startsWith("/user")) {
-      if (!role) return NextResponse.redirect(new URL("/login", req.url));
-      if (role === "admin") return NextResponse.redirect(new URL("/admin/dashboard", req.url));
-    }
+  // 4. Billing/Plan protection (Optional based on your logic)
+  const requiresPlan = ["/user/subscription/active"]; // Add paths here if needed
+  if (!hasPlan && requiresPlan.some(p => pathname.startsWith(p))) {
+    return NextResponse.redirect(new URL("/user/subscription", req.url));
+  }
 
-    // Force Privacy Policy acceptance for all user pages (including dashboard).
-    // If the cookie isn't set, redirect to the public /policy page.
-    if (path.startsWith("/user")) {
-      const accepted = req.cookies.get("policy_accepted")?.value === "true";
-      if (!accepted && !path.startsWith("/policy")) {
-        return NextResponse.redirect(new URL("/policy", req.url));
-      }
-    }
+  return NextResponse.next();
+}
 
-    // Block some user pages if no subscription
-    const requiresPlan = [
-      "dddd",
-      // "/user/dashboard",
-      // "/user/ai-assistant",
-      // "/user/integrations",
-      // "/user/analytics",
-    ];
-    if (
-      !hasPlan &&
-      requiresPlan.some((p) => path.startsWith(p)) &&
-      !path.startsWith("/user/subscription")
-    ) {
-      return NextResponse.redirect(new URL("/user/subscription", req.url));
-    }
-
-    return NextResponse.next();
-  },
-  {
-    callbacks: {
-      // if there is NO token → redirect to signIn page (/login)
-      authorized: ({ token, req }) => {
-        const hasToken = !!token;
-        if (!hasToken) {
-          console.log("[middleware] No token found for", req.nextUrl.pathname);
-        }
-        return hasToken;
-      },
-    },
-    pages: {
-      signIn: "/login",
-    },
-    // The secret MUST match what is in your Amplify Console.
-    // We use a fallback here to prevent 'Server Error' if Amplify's Edge runtime
-    // fails to provide the environment variable at request time.
-    secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "fallback-secret-for-prod",
-  },
-);
-
+/**
+ * Configure which paths the middleware should run on.
+ */
 export const config = {
   matcher: ["/admin/:path*", "/user/:path*"],
 };
