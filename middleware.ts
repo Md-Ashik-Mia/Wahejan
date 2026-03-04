@@ -139,8 +139,10 @@ export default withAuth(
     pages: {
       signIn: "/login",
     },
-    // Use the same fallback as lib/auth.ts to ensure consistency if env vars are missing
-    secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "fallback-secret-for-prod",
+    // The secret MUST match what is in your Amplify Console.
+    // Do NOT use a hardcoded fallback in production as it causes redirect loops
+    // if the main app uses the real secret and middleware uses the fallback.
+    secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET,
   },
 );
 
