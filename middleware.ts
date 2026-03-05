@@ -24,8 +24,10 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // 1. Identify valid session using getToken (more reliable on AWS Amplify than withAuth wrapper)
-  // Secure cookies are used only on HTTPS. Localhost uses standard cookies.
-  const isSecure = req.nextUrl.protocol === "https:";
+  // Secure cookies are used only on HTTPS. We check headers to handle production proxies.
+  const proto = req.headers.get("x-forwarded-proto") || req.nextUrl.protocol.replace(":", "");
+  const isSecure = proto === "https";
+
   const token = (await getToken({
     req,
     secret: SECRET,
