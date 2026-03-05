@@ -132,37 +132,39 @@ export default function SignupPage() {
           className="w-full bg-[#1e2837] px-4 py-3 rounded-md outline-none"
           onChange={(e) => setEmail(e.target.value)}
         />
-        <div className="relative">
+        <div className="relative group">
           <input
             type={showPassword ? "text" : "password"}
             placeholder="Enter your password"
-            className="w-full bg-[#1e2837] px-4 py-3 rounded-md outline-none pr-10"
+            className="w-full bg-[#1e2837] px-4 py-3 rounded-md outline-none pr-12 focus:ring-2 focus:ring-blue-500/50 transition-all"
             onChange={(e) => setPassword(e.target.value)}
           />
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-white transition-colors z-10 cursor-pointer"
+            aria-label={showPassword ? "Hide password" : "Show password"}
           >
-            {showPassword ? <FaEye size={20} /> : <FaEyeSlash size={20} />}
+            {showPassword ? <FaEyeSlash size={20} /> : <FaEye size={20} />}
           </button>
         </div>
-        <div className="relative">
+        <div className="relative group">
           <input
             type={showConfirmPassword ? "text" : "password"}
             placeholder="Confirm your password"
-            className="w-full bg-[#1e2837] px-4 py-3 rounded-md outline-none pr-10"
+            className="w-full bg-[#1e2837] px-4 py-3 rounded-md outline-none pr-12 focus:ring-2 focus:ring-blue-500/50 transition-all"
             onChange={(e) => setConfirmPassword(e.target.value)}
           />
           <button
             type="button"
             onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-white transition-colors z-10 cursor-pointer"
+            aria-label={showConfirmPassword ? "Hide password" : "Show password"}
           >
             {showConfirmPassword ? (
-              <FaEye size={20} />
-            ) : (
               <FaEyeSlash size={20} />
+            ) : (
+              <FaEye size={20} />
             )}
           </button>
         </div>
