@@ -216,13 +216,31 @@ export default function SidebarClient() {
   const items = role === "admin" ? adminNav : userNav;
 
   async function logout() {
-    // clear local tokens used by axios
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
+    try {
+      // 1. Clear local storage
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+        localStorage.removeItem("policy_accepted");
+      }
+
+      // 2. Call the server logout to wipe cookies (role, policy, etc)
+      await fetch("/api/auth/logout", { method: "POST" });
+
+      // 3. Trigger Next-Auth signOut
+      // We set redirect: false because we will handle the final redirect ourselves
+      // to guarantee it stays on the correct domain.
+      await signOut({ redirect: false });
+
+      // 4. Force hard redirect to login page!
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
+    } catch (error) {
+      console.error("Logout failed:", error);
+      // Fallback redirect
+      window.location.href = "/login";
     }
-    // Sign out using NextAuth (this handles cookies and local state)
-    await signOut({ callbackUrl: "/login", redirect: true });
   }
 
   return (
