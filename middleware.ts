@@ -24,11 +24,12 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // 1. Identify valid session using getToken (more reliable on AWS Amplify than withAuth wrapper)
-  // Secure cookies are used automatically on HTTPS (Amplify Production)
+  // Secure cookies are used only on HTTPS. Localhost uses standard cookies.
+  const isSecure = req.nextUrl.protocol === "https:";
   const token = (await getToken({
     req,
     secret: SECRET,
-    secureCookie: process.env.NODE_ENV === "production" || pathname.startsWith("https"),
+    secureCookie: isSecure,
   })) as AppJWT | null;
 
   const rawRole = (token as any)?.role ?? (token as any)?.user?.role;
@@ -67,7 +68,18 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  // 4. Billing/Plan protection (Optional based on your logic)
+  // 4. Handle Root Path (/) Smart Redirect
+  if (pathname === "/") {
+    if (!token) {
+      return NextResponse.redirect(new URL("/login", req.url));
+    }
+    if (role === "admin") {
+      return NextResponse.redirect(new URL("/admin/dashboard", req.url));
+    }
+    return NextResponse.redirect(new URL("/user/dashboard", req.url));
+  }
+
+  // 5. Billing/Plan protection (Optional based on your logic)
   const requiresPlan = ["/user/subscription/active"]; // Add paths here if needed
   if (!hasPlan && requiresPlan.some(p => pathname.startsWith(p))) {
     return NextResponse.redirect(new URL("/user/subscription", req.url));
@@ -80,5 +92,5 @@ export async function middleware(req: NextRequest) {
  * Configure which paths the middleware should run on.
  */
 export const config = {
-  matcher: ["/admin/:path*", "/user/:path*"],
+  matcher: ["/", "/admin/:path*", "/user/:path*"],
 };

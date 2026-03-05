@@ -1,22 +1,12 @@
 // app/page.tsx
-import { redirect } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-
-export default async function HomePage() {
-  const session = await getServerSession(authOptions);
-
-  if (!session) {
-    // not logged in → go to login
-    redirect("/login");
-  }
-
-  const role = (session.user as any)?.role;
-
-  if (role === "admin") {
-    redirect("/admin/dashboard");
-  } else {
-    // default to user dashboard
-    redirect("/user/dashboard");
-  }
+export default function HomePage() {
+  // Redirection is now handled by middleware.ts for better performance and to prevent server crashes.
+  return (
+    <div className="min-h-screen bg-black flex items-center justify-center text-white">
+      <div className="animate-pulse flex flex-col items-center gap-4">
+        <div className="w-12 h-12 rounded-full border-4 border-t-blue-500 border-gray-700 animate-spin"></div>
+        <p className="text-gray-400 font-medium tracking-wide">Connecting...</p>
+      </div>
+    </div>
+  );
 }
