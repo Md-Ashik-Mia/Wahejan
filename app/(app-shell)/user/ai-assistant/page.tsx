@@ -1,17 +1,13 @@
-<<<<<<< HEAD
-=======
-
->>>>>>> afe5154e3019e0eaec1fa324b2bf514d556b09ba
 "use client";
 import { userapi } from "@/lib/http/client";
 import axios from "axios";
 import { useSession } from "next-auth/react";
 import React, {
-  FormEvent,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
+    FormEvent,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from "react";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -448,7 +444,6 @@ const AIAssistantDashboard: React.FC = () => {
   });
 
   const toneInitializedRef = useRef(false);
-  const toneSavedRef = useRef<string>("standard");
 
   const fetchCompany = useCallback(async () => {
     setCompanyLoading(true);
@@ -462,13 +457,7 @@ const AIAssistantDashboard: React.FC = () => {
       setCompany(normalized);
 
       if (!toneInitializedRef.current) {
-<<<<<<< HEAD
         setToneInput(normalized.tone ?? "standard");
-=======
-        const initialTone = normalized.tone ?? "standard";
-        setTonePreset(initialTone);
-        toneSavedRef.current = initialTone;
->>>>>>> afe5154e3019e0eaec1fa324b2bf514d556b09ba
         toneInitializedRef.current = true;
       }
 
@@ -856,7 +845,6 @@ const AIAssistantDashboard: React.FC = () => {
   const [toneInput, setToneInput] = useState<string>("standard");
   const [toneSaving, setToneSaving] = useState(false);
 
-<<<<<<< HEAD
   const handleToneSave = async () => {
     const nextTone = toneInput.trim();
     if (!nextTone) {
@@ -864,37 +852,19 @@ const AIAssistantDashboard: React.FC = () => {
       toast.error("Tone cannot be empty");
       return;
     }
-
-=======
-  const handleTonePresetChange = async (nextTone: string) => {
-    const trimmed = nextTone.trim();
-    if (!trimmed) {
-      setTonePreset(toneSavedRef.current);
-      return;
-    }
-
-    const prevSaved = toneSavedRef.current;
-    setTonePreset(trimmed);
->>>>>>> afe5154e3019e0eaec1fa324b2bf514d556b09ba
     setToneSaving(true);
     setCompanyError(null);
 
     try {
       const res = await requestWithSlashFallback(
-        (ep) => userapi.patch(ep, { tone: trimmed }),
+        (ep) => userapi.patch(ep, { tone: nextTone }),
         COMPANY_ENDPOINT,
       );
       const normalized = normalizeCompany(res?.data);
       setCompany(normalized);
-<<<<<<< HEAD
       setToneInput(normalized.tone ?? nextTone);
       toast.success("Tone updated");
     } catch (e: unknown) {
-=======
-      toneSavedRef.current = trimmed;
-    } catch (e: unknown) {
-      setTonePreset(prevSaved);
->>>>>>> afe5154e3019e0eaec1fa324b2bf514d556b09ba
       setCompanyError(getApiErrorMessage(e, "Failed to update tone"));
       toast.error(getApiErrorMessage(e, "Failed to update tone"));
     } finally {
@@ -1179,7 +1149,6 @@ const AIAssistantDashboard: React.FC = () => {
     <div className="min-h-screen bg-black text-white p-6 space-y-8">
       <ToastContainer position="top-right" autoClose={2500} theme="dark" />
 
-<<<<<<< HEAD
       <CompanyAndHoursSection
         isBlocked={isBlocked}
         companyForm={companyForm}
@@ -1198,66 +1167,6 @@ const AIAssistantDashboard: React.FC = () => {
         dayOptions={DAY_OPTIONS}
         dayLabel={DAY_LABEL as Record<string, string>}
       />
-=======
-        {/* Basic company info */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input
-            className="bg-gray-900 p-3 rounded-lg"
-            placeholder="Company name here"
-            value={companyForm.name}
-            onChange={(e) =>
-              setCompanyForm((f) => ({ ...f, name: e.target.value }))
-            }
-          />
-          <input
-            className="bg-gray-900 p-3 rounded-lg"
-            placeholder="Industry (e.g., Technology)"
-            value={companyForm.industry}
-            onChange={(e) =>
-              setCompanyForm((f) => ({ ...f, industry: e.target.value }))
-            }
-          />
-          <textarea
-            className="col-span-1 md:col-span-2 bg-gray-900 p-3 rounded-lg"
-            placeholder="What does your company do?"
-            value={companyForm.description}
-            onChange={(e) =>
-              setCompanyForm((f) => ({ ...f, description: e.target.value }))
-            }
-          />
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-semibold text-gray-300 ml-1">
-              AI Greeting
-            </label>
-            <input
-              className="bg-gray-900 p-3 rounded-lg"
-              placeholder="e.g. Assalamu Alaikum"
-              value={companyForm.greeting}
-              onChange={(e) =>
-                setCompanyForm((f) => ({ ...f, greeting: e.target.value }))
-              }
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-semibold text-gray-300 ml-1">
-              Concurrent Booking Limit
-            </label>
-            <input
-              type="number"
-              min={1}
-              className="bg-gray-900 p-3 rounded-lg"
-              placeholder="1"
-              value={companyForm.concurrent_booking_limit}
-              onChange={(e) =>
-                setCompanyForm((f) => ({
-                  ...f,
-                  concurrent_booking_limit: Number(e.target.value),
-                }))
-              }
-            />
-          </div>
-        </div>
->>>>>>> afe5154e3019e0eaec1fa324b2bf514d556b09ba
 
       <ServicesSection
         isBlocked={isBlocked}
@@ -1293,7 +1202,6 @@ const AIAssistantDashboard: React.FC = () => {
         filenameFromPath={filenameFromPath}
       />
 
-<<<<<<< HEAD
       <KnowledgeBaseSection
         isManagementBlocked={isManagementBlocked}
         topicsLoading={topicsLoading}
@@ -1310,551 +1218,6 @@ const AIAssistantDashboard: React.FC = () => {
         setKbForm={setKbForm}
         handleKbSubmit={handleKbSubmit}
       />
-=======
-        {companyError && (
-          <div className="text-sm text-red-400">{companyError}</div>
-        )}
-
-        <button
-          type="button"
-          onClick={handleCompanyUpdate}
-          disabled={companyLoading}
-          className="mt-2 bg-blue-600 px-6 py-2 rounded-lg disabled:opacity-60"
-        >
-          {companyLoading ? "Updating..." : "Update"}
-        </button>
-
-        {/* Opening Hours list */}
-        <div>
-          <h3 className="font-semibold mb-2">Opening Hours</h3>
-
-          {openingError && (
-            <div className="mb-3 text-sm text-red-400">{openingError}</div>
-          )}
-
-          <div className="flex flex-wrap gap-3 mb-4">
-            {openingSlots.map((slot) => (
-              <div
-                key={slot.id}
-                className="bg-gray-900 px-4 py-3 rounded-xl flex items-center gap-3"
-              >
-                <div>
-                  <div className="font-semibold">
-                    {DAY_LABEL[slot.day as DayCode] ?? slot.day}
-                  </div>
-                  <div className="text-sm text-gray-300">
-                    {slot.start} – {slot.end}
-                  </div>
-                </div>
-                <div className="flex gap-2 ml-4">
-                  <button
-                    type="button"
-                    onClick={() => handleOpeningEdit(slot)}
-                    disabled={openingLoading}
-                    className="text-xs bg-blue-600 px-3 py-1 rounded-lg"
-                  >
-                    Update
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleOpeningDelete(slot.id)}
-                    disabled={openingLoading}
-                    className="text-xs bg-red-600 px-3 py-1 rounded-lg"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
-
-            {!openingLoading && openingSlots.length === 0 && (
-              <p className="text-sm text-gray-400">
-                No opening hours added yet.
-              </p>
-            )}
-
-            {openingLoading && (
-              <p className="text-sm text-gray-400">Loading...</p>
-            )}
-          </div>
-
-          {/* Opening hours form */}
-          <form
-            onSubmit={handleOpeningSubmit}
-            className="flex flex-wrap gap-3 items-center"
-          >
-            <select
-              className="bg-gray-900 p-2 rounded-lg"
-              value={openingForm.day}
-              onChange={(e) =>
-                setOpeningForm((f) => ({ ...f, day: e.target.value }))
-              }
-            >
-              {DAY_OPTIONS.map((d) => (
-                <option key={d.code} value={d.code}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
-            <input
-              type="time"
-              className="bg-gray-900 p-2 rounded-lg w-36"
-              value={openingForm.start}
-              onChange={(e) =>
-                setOpeningForm((f) => ({ ...f, start: e.target.value }))
-              }
-              placeholder="Start"
-            />
-            <span>to</span>
-            <input
-              type="time"
-              className="bg-gray-900 p-2 rounded-lg w-36"
-              value={openingForm.end}
-              onChange={(e) =>
-                setOpeningForm((f) => ({ ...f, end: e.target.value }))
-              }
-              placeholder="End"
-            />
-            <button
-              type="submit"
-              disabled={openingLoading}
-              className="bg-blue-600 px-4 py-2 rounded-lg text-sm font-semibold"
-            >
-              {openingLoading
-                ? "Saving..."
-                : openingForm.id === null
-                  ? "Add Slot"
-                  : "Save Changes"}
-            </button>
-          </form>
-        </div>
-      </section>
-    )}
-
-      {/* Prices & Services */}
-      {!isBlocked && (
-        <section className="bg-[#272727] rounded-2xl p-6 shadow-lg space-y-4">
-          <h2 className="text-xl font-semibold">
-            Prices & Services (Optional)
-          </h2>
-
-        {servicesError ? (
-          <p className="text-sm text-red-400">{servicesError}</p>
-        ) : null}
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="text-gray-400 border-b border-gray-900">
-                <th className="py-2">Service Name</th>
-                <th className="py-2">Description</th>
-                <th className="py-2">Price</th>
-                <th className="py-2">Start Time</th>
-                <th className="py-2">End Time</th>
-                <th className="py-2">Duration (min)</th>
-                <th className="py-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {servicesLoading && (
-                <tr>
-                  <td
-                    colSpan={7}
-                    className="py-4 text-center text-gray-400 text-sm"
-                  >
-                    Loading services...
-                  </td>
-                </tr>
-              )}
-
-              {services.map((service) => (
-                <tr
-                  key={service.id}
-                  className="border-b border-gray-900 text-sm"
-                >
-                  <td className="py-2">{service.name}</td>
-                  <td className="py-2">{service.description || "—"}</td>
-                  <td className="py-2">${service.price}</td>
-                  <td className="py-2">{service.start_time}</td>
-                  <td className="py-2">{service.end_time}</td>
-                  <td className="py-2">
-                    {typeof service.duration === "number"
-                      ? service.duration
-                      : "—"}
-                  </td>
-                  <td className="py-2">
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleServiceEdit(service)}
-                        disabled={servicesLoading}
-                        className="text-xs bg-blue-600 px-3 py-1 rounded-lg"
-                      >
-                        Update
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleServiceDelete(service.id)}
-                        disabled={servicesLoading}
-                        className="text-xs bg-red-600 px-3 py-1 rounded-lg"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-
-              {!servicesLoading && services.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={7}
-                    className="py-4 text-center text-gray-400 text-sm"
-                  >
-                    No services added yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Service form */}
-        <form
-          onSubmit={handleServiceSubmit}
-          className="grid grid-cols-1 md:grid-cols-7 gap-3 pt-3"
-        >
-          <input
-            className="bg-gray-900 p-2 rounded-lg"
-            placeholder="Service Name"
-            value={serviceForm.name}
-            onChange={(e) =>
-              setServiceForm((f) => ({ ...f, name: e.target.value }))
-            }
-          />
-          <input
-            className="bg-gray-900 p-2 rounded-lg"
-            placeholder="Description"
-            value={serviceForm.description}
-            onChange={(e) =>
-              setServiceForm((f) => ({ ...f, description: e.target.value }))
-            }
-          />
-          <input
-            className="bg-gray-900 p-2 rounded-lg"
-            placeholder="Price ($)"
-            value={serviceForm.price}
-            onChange={(e) =>
-              setServiceForm((f) => ({ ...f, price: e.target.value }))
-            }
-          />
-          <input
-            className="bg-gray-900 p-2 rounded-lg"
-            placeholder="Start Time (e.g., 11:00 am)"
-            value={serviceForm.start_time}
-            onChange={(e) =>
-              setServiceForm((f) => ({ ...f, start_time: e.target.value }))
-            }
-          />
-          <input
-            className="bg-gray-900 p-2 rounded-lg"
-            placeholder="End Time (e.g., 6:00 pm)"
-            value={serviceForm.end_time}
-            onChange={(e) =>
-              setServiceForm((f) => ({ ...f, end_time: e.target.value }))
-            }
-          />
-          <input
-            type="number"
-            min={0}
-            className="bg-gray-900 p-2 rounded-lg"
-            placeholder="Duration (min)"
-            value={serviceForm.duration}
-            onChange={(e) =>
-              setServiceForm((f) => ({
-                ...f,
-                duration: e.target.value,
-              }))
-            }
-          />
-          <button
-            type="submit"
-            disabled={servicesLoading}
-            className="bg-blue-600 px-4 py-2 rounded-lg text-sm font-semibold"
-          >
-            {servicesLoading
-              ? "Saving..."
-              : serviceForm.id === null
-                ? "+ Add"
-                : "Save Changes"}
-          </button>
-        </form>
-      </section>
-    )}
-
-      {/* Tone & Training */}
-      {!isManagementBlocked && (
-        <section className="bg-[#272727] rounded-2xl p-6 shadow-lg grid md:grid-cols-2 gap-6">
-          {/* Tone */}
-          <div>
-            <h3 className="font-semibold mb-2">Tone & Personality</h3>
-            <p className="text-sm text-gray-300">
-              Choose how the AI speaks for your brand.
-            </p>
-            <input
-              className="bg-gray-900 p-3 rounded-lg w-full mt-3"
-              placeholder="Tone (e.g., Formal)"
-              value={tonePreset}
-              onChange={(e) => setTonePreset(e.target.value)}
-              onBlur={() => void handleTonePresetChange(tonePreset)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void handleTonePresetChange(tonePreset);
-                }
-              }}
-              disabled={toneSaving || companyLoading}
-            />
-          </div>
-
-          {/* Train AI */}
-          <div>
-            <h3 className="font-semibold mb-2">Train AI</h3>
-            <p className="text-sm text-gray-300">
-              Upload files to train your assistant.
-            </p>
-
-            <div
-              onClick={handleFileClick}
-              onDragOver={handleDragOverFiles}
-              onDrop={handleDropFiles}
-              className="mt-3 border-2 border-dashed border-gray-900 rounded-xl p-6 cursor-pointer hover:bg-gray-900/40"
-            >
-              <div className="text-center">
-                <p className="font-medium">Drag files here, or click to browse</p>
-                <p className="text-gray-400 text-sm mt-2">
-                  Supports PDF, DOCX, CSV (max 10MB each)
-                </p>
-                {trainingUploading && (
-                  <p className="text-gray-400 text-sm mt-2">Uploading...</p>
-                )}
-                {trainingError && (
-                  <p className="text-red-400 text-sm mt-2">{trainingError}</p>
-                )}
-              </div>
-            </div>
-
-            <input
-              type="file"
-              multiple
-              ref={fileInputRef}
-              onChange={handleFilesSelected}
-              accept=".pdf,.doc,.docx,.csv"
-              className="hidden"
-            />
-
-            <div className="mt-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-gray-200">
-                  Uploaded files
-                </p>
-                <p className="text-xs text-gray-400">{trainingFiles.length}</p>
-              </div>
-
-              {trainingFilesError && (
-                <p className="text-sm text-red-400 mt-2">{trainingFilesError}</p>
-              )}
-
-              <div className="mt-3 rounded-xl bg-gray-900">
-                {trainingFilesLoading ? (
-                  <p className="text-sm text-gray-400 p-4">Loading...</p>
-                ) : trainingFiles.length === 0 ? (
-                  <p className="text-sm text-gray-400 p-4">
-                    No files uploaded yet.
-                  </p>
-                ) : (
-                  <div className="max-h-56 overflow-y-auto">
-                    <table className="w-full text-left text-sm">
-                      <thead className="sticky top-0 bg-gray-900">
-                        <tr className="text-gray-400 border-b border-gray-800">
-                          <th className="py-2 px-3">File</th>
-                          <th className="py-2 px-3 whitespace-nowrap">
-                            Uploaded
-                          </th>
-                          <th className="py-2 px-3 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {trainingFiles.map((tf) => (
-                          <tr key={tf.id} className="border-b border-gray-800">
-                            <td className="py-2 px-3">
-                              <p
-                                className="text-gray-200 truncate"
-                                title={tf.file}
-                              >
-                                {filenameFromPath(tf.file)}
-                              </p>
-                            </td>
-                            <td className="py-2 px-3 whitespace-nowrap text-gray-400">
-                              {tf.uploaded_at
-                                ? new Date(tf.uploaded_at).toLocaleDateString()
-                                : "—"}
-                            </td>
-                            <td className="py-2 px-3">
-                              <div className="flex justify-end">
-                                <button
-                                  type="button"
-                                  disabled={trainingFileDeletingId === tf.id}
-                                  onClick={() => handleDeleteTrainingFile(tf.id)}
-                                  className="text-xs bg-red-600 px-3 py-1 rounded-lg"
-                                >
-                                  {trainingFileDeletingId === tf.id
-                                    ? "Deleting..."
-                                    : "Delete"}
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* Knowledge Base */}
-      {!isManagementBlocked && (
-        <section
-          id="knowledge-base"
-          className="bg-[#272727] rounded-2xl p-6 shadow-lg space-y-4"
-        >
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold mb-2">AI Assistant Knowledge Base</h3>
-            <button
-              className="bg-blue-600 px-4 py-2 rounded-lg"
-              onClick={openNewTopicModal}
-              disabled={topicsLoading}
-            >
-              + Add New Topic
-            </button>
-          </div>
-
-          {topicsError && <p className="text-sm text-red-400">{topicsError}</p>}
-
-          <div className="space-y-3">
-            {topicsLoading ? (
-              <p className="text-sm text-gray-400">Loading topics...</p>
-            ) : (
-              topics.map((topic) => (
-                <div
-                  key={topic.id}
-                  className="bg-gray-900 p-4 rounded-xl flex justify-between items-start gap-4"
-                >
-                  <div>
-                    <h4 className="font-semibold">{topic.title}</h4>
-                    <p className="text-gray-400 text-sm mt-1">
-                      {topic.description}
-                    </p>
-                    <p className="text-gray-500 text-xs mt-1">
-                      Added:{" "}
-                      {topic.createdAt
-                        ? new Date(topic.createdAt).toLocaleDateString()
-                        : "—"}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    <button
-                      className="bg-blue-500 px-3 py-1 rounded-lg text-xs disabled:opacity-60"
-                      onClick={() => openEditTopicModal(topic)}
-                      disabled={topicSaving || topicDeletingId === topic.id}
-                    >
-                      ✏️ Edit
-                    </button>
-                    <button
-                      className="bg-red-600 px-3 py-1 rounded-lg text-xs disabled:opacity-60"
-                      onClick={() => handleTopicDelete(topic.id)}
-                      disabled={topicDeletingId === topic.id}
-                    >
-                      {topicDeletingId === topic.id
-                        ? "Deleting..."
-                        : "🗑️ Delete"}
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-
-            {topics.length === 0 && (
-              <p className="text-sm text-gray-400">
-                No topics yet. Click &quot;Add New Topic&quot; to get started.
-              </p>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* Modal for Knowledge base topic */}
-      {isKbModalOpen && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-[#181818] rounded-2xl p-6 w-full max-w-lg space-y-4">
-            <h3 className="text-lg font-semibold">
-              {kbForm.id === null ? "Add New Topic" : "Edit Topic"}
-            </h3>
-            <form onSubmit={handleKbSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm text-gray-300">Subject</label>
-                <input
-                  className="bg-gray-900 p-3 rounded-lg w-full"
-                  placeholder="Topic subject"
-                  value={kbForm.title}
-                  onChange={(e) =>
-                    setKbForm((f) => ({ ...f, title: e.target.value }))
-                  }
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm text-gray-300">Description</label>
-                <textarea
-                  className="bg-gray-900 p-3 rounded-lg w-full min-h-[120px]"
-                  placeholder="Describe this topic so the AI can answer questions about it…"
-                  value={kbForm.description}
-                  onChange={(e) =>
-                    setKbForm((f) => ({ ...f, description: e.target.value }))
-                  }
-                  required
-                />
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsKbModalOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-gray-800 text-sm"
-                  disabled={topicSaving}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-lg bg-blue-600 text-sm font-semibold"
-                  disabled={topicSaving}
-                >
-                  {topicSaving
-                    ? "Saving..."
-                    : kbForm.id === null
-                      ? "Add Topic"
-                      : "Save Changes"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
->>>>>>> afe5154e3019e0eaec1fa324b2bf514d556b09ba
     </div>
   );
 };
