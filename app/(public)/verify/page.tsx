@@ -29,8 +29,8 @@ export default function VerifyPage() {
       });
       if (res.status === 200) {
         localStorage.removeItem("signup_email");
-        toast.success("Email verified. Please log in.");
-        router.push("/login");
+        toast.success("Email verified. Please review policy before login.");
+        router.push("/policy");
       } else {
         toast.error("Invalid code");
       }

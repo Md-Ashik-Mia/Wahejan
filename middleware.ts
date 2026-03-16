@@ -9,7 +9,10 @@ type AppJWT = JWT & {
 };
 
 // Use the same secret for both App and Middleware
-const SECRET = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "fallback-secret-for-prod";
+const SECRET =
+  process.env.NEXTAUTH_SECRET ||
+  process.env.AUTH_SECRET ||
+  "fallback-secret-for-prod";
 
 function normalizeRole(role: unknown): string {
   return typeof role === "string" ? role.trim().toLowerCase() : "";
@@ -25,7 +28,9 @@ export async function middleware(req: NextRequest) {
 
   // 1. Identify valid session using getToken (more reliable on AWS Amplify than withAuth wrapper)
   // Secure cookies are used only on HTTPS. We check headers to handle production proxies.
-  const proto = req.headers.get("x-forwarded-proto") || req.nextUrl.protocol.replace(":", "");
+  const proto =
+    req.headers.get("x-forwarded-proto") ||
+    req.nextUrl.protocol.replace(":", "");
   const isSecure = proto === "https";
 
   const token = (await getToken({
@@ -41,15 +46,20 @@ export async function middleware(req: NextRequest) {
   // 2. Admin Protection
   if (pathname.startsWith("/admin")) {
     if (!token) return NextResponse.redirect(new URL("/login", req.url));
-    if (role !== "admin") return NextResponse.redirect(new URL("/unauthorized", req.url));
+    if (role !== "admin")
+      return NextResponse.redirect(new URL("/unauthorized", req.url));
   }
 
   // 3. User Protection (/user/* routes)
   if (pathname.startsWith("/user")) {
     // If no token, redirect to login
     if (!token) {
-      console.log("[Middleware] No token found for user path, redirecting to /login");
-      return NextResponse.redirect(new URL(`/login?callbackUrl=${encodeURIComponent(pathname)}`, req.url));
+      console.log(
+        "[Middleware] No token found for user path, redirecting to /login",
+      );
+      return NextResponse.redirect(
+        new URL(`/login?callbackUrl=${encodeURIComponent(pathname)}`, req.url),
+      );
     }
 
     // A. Role check (Internal protection)
@@ -57,16 +67,6 @@ export async function middleware(req: NextRequest) {
     // to avoid the infinite login loop on Amplify.
     if (role === "admin") {
       return NextResponse.redirect(new URL("/admin/dashboard", req.url));
-    }
-
-    // B. Privacy Policy Check (The "Gate")
-    // Note: Cookies on Amplify might need 'SameSite=Lax'.
-    const accepted = req.cookies.get("policy_accepted")?.value === "true";
-
-    // Force Privacy Policy check on ALL user pages.
-    if (!accepted && !pathname.startsWith("/policy")) {
-      console.log("[Middleware] Policy not accepted, forcing redirect to /policy");
-      return NextResponse.redirect(new URL("/policy", req.url));
     }
   }
 
@@ -83,7 +83,7 @@ export async function middleware(req: NextRequest) {
 
   // 5. Billing/Plan protection (Optional based on your logic)
   const requiresPlan = ["/user/subscription/active"]; // Add paths here if needed
-  if (!hasPlan && requiresPlan.some(p => pathname.startsWith(p))) {
+  if (!hasPlan && requiresPlan.some((p) => pathname.startsWith(p))) {
     return NextResponse.redirect(new URL("/user/subscription", req.url));
   }
 
